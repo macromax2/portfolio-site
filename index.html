@@ -1753,7 +1753,7 @@ function paidPaymentItems(){
     if(seen[k]) return false;
     seen[k] = 1;
     return true;
-  }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
 function futurePaymentItems(){
   const today = todayISO(), items = [];
@@ -2472,7 +2472,7 @@ function renderTrades(){
     if(fv && t.side!==fv) return false;
     if(ft && (t.name||"").toLowerCase().indexOf(ft)<0) return false;
     return true;
-  }).sort((a,b)=>(d2i(b.date)||"").localeCompare(d2i(a.date)||"") || (b.time||"").localeCompare(a.time||""));
+  }).sort((a,b)=>(d2i(a.date)||"").localeCompare(d2i(b.date)||"") || (a.time||"").localeCompare(b.time||""));
   $("#trRows").innerHTML = rows.length ? rows.map(t=>{
     const fee = (t.fee_broker||0)+(t.fee_exchange||0);
     return "<tr>"+

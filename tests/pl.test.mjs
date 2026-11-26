@@ -154,6 +154,10 @@ assert.ok(html.includes('COUPONPERIOD') && html.includes('365/q.COUPONPERIOD/12'
           'Месячный доход не учитывает частоту купонов');
 assert.ok(html.includes('id="payRepeat"') && html.includes('repeatMonthly'),
           'Нет ежемесячного повтора ручной выплаты');
-checks += 4;
+assert.ok(html.includes('String(a.date).localeCompare(String(b.date))'),
+          'Выплаченные купоны идут не с начала портфеля');
+assert.ok(html.includes('(d2i(a.date)||"").localeCompare(d2i(b.date)||"")'),
+          'Журнал сделок идёт не с начала портфеля');
+checks += 6;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);
