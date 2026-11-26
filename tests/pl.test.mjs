@@ -146,5 +146,14 @@ assert.ok(html.includes("money(d.nkd)") && !html.includes('в т.ч. НКД'),
 assert.ok(html.includes('total += m.clean') && html.includes('accruedTotal'),
           'Общая стоимость включает НКД');
 checks += 9;
+assert.ok(html.includes('paidPaymentItems') && html.includes('Уже выплачено'),
+          'Выплаченные купоны не показаны отдельно');
+assert.ok(html.includes('monthlyPaymentPlan') && html.includes('Ожидаем каждый месяц'),
+          'Нет расчёта ожидаемой суммы каждый месяц');
+assert.ok(html.includes('COUPONPERIOD') && html.includes('365/q.COUPONPERIOD/12'),
+          'Месячный доход не учитывает частоту купонов');
+assert.ok(html.includes('id="payRepeat"') && html.includes('repeatMonthly'),
+          'Нет ежемесячного повтора ручной выплаты');
+checks += 4;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);

@@ -245,6 +245,7 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
       <div><label>Бумага</label><input type="text" id="payName" placeholder="Сбербанк, ОФЗ 26233…"/></div>
       <div><label>Тип</label><select id="payKind"><option>Дивиденд</option><option>Купон</option></select></div>
       <div><label>Сумма, ₽</label><input type="number" id="payAmt" step="0.01" min="0" placeholder="0.00"/></div>
+      <div><label><input type="checkbox" id="payRepeat" style="vertical-align:middle"/> Каждый месяц</label></div>
       <div><button class="btn" id="payAdd">Добавить</button></div>
     </div>
   </div>
@@ -1697,7 +1698,15 @@ function paymentEvents(){
       items.push({date:q.NEXTCOUPON, name:p.name, kind:"Купон", amt:q.COUPONVALUE*p.qty});
     }
   });
-  state.payments.forEach(p=>{ if(p.date>=today) items.push(p); });
+  state.payments.forEach(p=>{
+    if(!p.date) return;
+    if(p.repeatMonthly){
+      for(let m=0;m<12;m++){
+        const d = addMonths(p.date, m);
+        if(d>=today) items.push(Object.assign({}, p, {date:d}));
+      }
+    }else if(p.date>=today) items.push(p);
+  });
   return items;
 }
 // два напоминания на выплату: накануне и в день выплаты, в 10:00
@@ -1725,55 +1734,119 @@ function syncNotifications(){
 }
 
 /* ================= РЕНДЕР: ВЫПЛАТЫ ================= */
-function renderPayments(){
-  // только текущие и будущие выплаты
-  const today = todayISO();
-  const items = [];
+/* Уже полученные выплаты берём из брокерских отчётов — это реальные
+   записи «Выплата купонов/дивидендов», а не прогноз. */
+function paidPaymentItems(){
+  const today = todayISO(), out = [];
+  (state.report.cashflow||[]).forEach(x=>{
+    const desc = String(x.desc||""), amt = Number(x.in||0), d = d2i(x.date);
+    if(!/выплата купонов|дивид/i.test(desc) || !(amt>0) || !d || d>=today) return;
+    out.push({date:d, name:desc, kind:/дивид/i.test(desc)?"Дивиденд":"Купон",
+              amt:amt, paid:true, auto:true});
+  });
+  state.payments.forEach((p,idx)=>{
+    if(p.date && p.date<today) out.push(Object.assign({manual:true, idx:idx, paid:true}, p));
+  });
+  const seen = {};
+  return out.filter(it=>{
+    const k = [it.date,it.name,it.amt].join("|");
+    if(seen[k]) return false;
+    seen[k] = 1;
+    return true;
+  }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+}
+function futurePaymentItems(){
+  const today = todayISO(), items = [];
   reportPositions().forEach(p=>{
-    const r = refOf(p.isin); const k = r?secidOf(r):p.isin;
-    const q = state.quotes[k];
+    const r = refOf(p.isin), k = r?secidOf(r):p.isin, q = state.quotes[k];
     if(q && q.NEXTCOUPON && q.COUPONVALUE && q.NEXTCOUPON>=today && p.qty){
       items.push({date:q.NEXTCOUPON, name:p.name, kind:"Купон",
                   amt:q.COUPONVALUE*p.qty, auto:true});
     }
   });
   state.payments.forEach((p,idx)=>{
-    if(p.date>=today) items.push(Object.assign({manual:true, idx:idx}, p));
+    if(!p.date) return;
+    if(p.repeatMonthly){
+      for(let m=0;m<12;m++){
+        const d = addMonths(p.date, m);
+        if(d>=today) items.push(Object.assign({}, p,
+          {date:d, manual:true, idx:idx, recurring:true}));
+      }
+    }else if(p.date>=today){
+      items.push(Object.assign({manual:true, idx:idx}, p));
+    }
   });
-  items.sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  return items.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+}
+// Сколько купонов приходится в среднем на месяц: ISS отдаёт частоту выплат
+// (COUPONPERIOD), поэтому это не «один купон в месяц», а реальный темп.
+function monthlyPaymentPlan(){
+  let total = 0;
+  const lines = [];
+  reportPositions().forEach(p=>{
+    const r = refOf(p.isin), k = r?secidOf(r):p.isin, q = state.quotes[k];
+    if(!q || !p.qty || !(q.COUPONVALUE>0) || !(q.COUPONPERIOD>0)) return;
+    const monthly = q.COUPONVALUE*p.qty*365/q.COUPONPERIOD/12;
+    total += monthly;
+    lines.push({name:p.name, amt:monthly, every:q.COUPONPERIOD});
+  });
+  state.payments.forEach(p=>{
+    if(p.repeatMonthly && p.amt>0){
+      total += p.amt;
+      lines.push({name:p.name, amt:p.amt, every:30});
+    }
+  });
+  return {total:total, lines:lines};
+}
+function renderPayments(){
+  const today = todayISO();
+  const paid = paidPaymentItems();
+  const items = futurePaymentItems();
   const month = today.slice(0,7);
   const now = items.filter(it=>(it.date||"").slice(0,7)===month);
   const later = items.filter(it=>(it.date||"").slice(0,7)!==month);
   const head = t => '<div class="small muted" style="margin:10px 0 4px;font-weight:600">'+t+'</div>';
-  
-  // прогноз купонного дохода на следующий месяц/квартал
-  const forecastMonths = 3;
-  const futureCoupItems = items.filter(it=>(it.kind==="Купон" && new Date(it.date+"T00:00:00")>=new Date(todayISO()+"T00:00:00")));
+  const plan = monthlyPaymentPlan();
+  const planHtml = plan.total>0 ? head("Ожидаем каждый месяц") +
+    '<div class="rowcard"><div><div class="name">Средний купонный доход</div>'+
+    '<div class="tik">'+plan.lines.map(l=>esc(l.name)+" · "+money(l.amt)+"/мес").join("<br>")+
+    '</div></div><div style="text-align:right"><b class="up">+'+money(plan.total)+
+    '</b><div class="tik">в месяц</div></div></div>' : "";
   const forecastByMonth = {};
-  for(let m=0; m<=forecastMonths; m++){
-    const ms = addMonths(todayISO(), m);
-    const msKey = ms.slice(0,7);
-    forecastByMonth[msKey] = (forecastByMonth[msKey]||0) + futureCoupItems
-      .filter(it=>it.date.slice(0,7)===msKey)
-      .reduce((s,it)=>s+it.amt, 0);
-  }
-  const forecastLines = Object.entries(forecastByMonth).slice(1) // today уже в now
-    .map(([period, sum])=> `<div class="small muted" style="margin:8px 0">Ожидаемый купонный доход ${period}: ${money(sum)}</div>`)
+  for(let m=1;m<=6;m++) forecastByMonth[addMonths(today,m).slice(0,7)] = 0;
+  items.filter(it=>it.kind==="Купон" && it.amt>0).forEach(it=>{
+    const key = String(it.date).slice(0,7);
+    if(key in forecastByMonth) forecastByMonth[key] += it.amt;
+  });
+  const forecastLines = Object.entries(forecastByMonth)
+    .filter(([,sum])=>sum>0)
+    .map(([period,sum])=> '<div class="small muted" style="margin:8px 0">'+
+      'Ожидаемый купонный доход '+period+': '+money(sum)+'</div>')
     .join("");
-  
-  $("#upcoming").innerHTML = items.length ?
-    (now.length ? head("Сейчас (в этом месяце)")+now.map(it=>payRow(it, it.idx)).join("") : "") +
-    (later.length ? head("Далее")+later.map(it=>payRow(it, it.idx)).join("") : "") +
-    (forecastLines?'<div style="margin-top:12px">'+forecastLines+'</div>':'') :
-    '<div class="empty">Нет известных текущих и будущих выплат. Дивиденды Мосбиржа не отдаёт через открытый API — добавьте анонсированную выплату вручную ниже.</div>';
+  let html = "";
+  if(paid.length){
+    const paidTotal = paid.reduce((s,it)=>s+it.amt,0);
+    html += head("Уже выплачено · "+money(paidTotal));
+    html += paid.map(it=>payRow(it, it.idx)).join("");
+  }
+  if(items.length){
+    if(now.length) html += head("Сейчас (в этом месяце)")+now.map(it=>payRow(it,it.idx)).join("");
+    if(later.length) html += head("Далее")+later.map(it=>payRow(it,it.idx)).join("");
+  }
+  html += planHtml;
+  if(forecastLines) html += '<div style="margin-top:12px">'+forecastLines+'</div>';
+  $("#upcoming").innerHTML = html || '<div class="empty">Нет известных текущих и будущих выплат. Дивиденды Мосбиржа не отдаёт через открытый API — добавьте анонсированную выплату вручную ниже.</div>';
   syncNotifications();   // расписание напоминаний в приложении
 }
 function payRow(it, idx){
+  const amountClass = it.paid ? "" : "up";
   return '<div class="rowcard"><div>'+
     '<div class="name">'+esc(it.name)+'</div>'+
     '<div class="tik">'+fmtDateRu(it.date)+(it.kind?" · "+esc(it.kind):"")+
-      (it.auto?" · по данным ISS":"")+(it.manual?" · вручную":"")+'</div></div>'+
-    '<div style="text-align:right"><b class="up">+'+money(it.amt)+'</b>'+
+      (it.auto?" · по данным ISS":"")+(it.manual?" · вручную":"")+
+      (it.paid?" · выплачено":"")+(it.recurring?" · каждый месяц":"")+'</div></div>'+
+    '<div style="text-align:right"><b class="'+amountClass+'">'+
+    (it.paid?"":"+")+money(it.amt)+'</b>'+
     (idx!=null?' <button class="btn small danger" data-delpay="'+idx+'">✕</button>':'')+
     '</div></div>';
 }
@@ -1981,7 +2054,13 @@ function goalPlan(){
       total:q.COUPONVALUE * p.qty * n});
   });
   (state.payments||[]).forEach(p=>{         // известные будущие выплаты (вручную)
-    if(p.date >= todayISO()) addIncome(p.date, p.amt, "pay");
+    if(!p.date) return;
+    if(p.repeatMonthly){
+      for(let m=0;m<12;m++){
+        const d = addMonths(p.date, m);
+        if(d >= todayISO()) addIncome(d, p.amt, "pay");
+      }
+    }else if(p.date >= todayISO()) addIncome(p.date, p.amt, "pay");
   });
   const incomeTotal = incomes.reduce((s,v)=>s+v,0);
   const series = items.map(()=>[]);
@@ -2972,12 +3051,13 @@ function bind(){
   // выплаты
   $("#payAdd").addEventListener("click", ()=>{
     const d = $("#payDate").value, n = $("#payName").value.trim(),
-          a = parseFloat($("#payAmt").value), k = $("#payKind").value;
+          a = parseFloat($("#payAmt").value), k = $("#payKind").value,
+          rep = !!$("#payRepeat").checked;
     if(!d || !n || !(a>0)){ setStatus("Заполните дату, название и сумму выплаты", true); return; }
-    state.payments.push({date:d, name:n, kind:k, amt:a, manual:true});
+    state.payments.push({date:d, name:n, kind:k, amt:a, manual:true, repeatMonthly:rep});
     save(); renderPayments();
-    $("#payName").value=""; $("#payAmt").value="";
-    setStatus("Выплата добавлена");
+    $("#payName").value=""; $("#payAmt").value=""; $("#payRepeat").checked=false;
+    setStatus(rep ? "Ежемесячная выплата добавлена" : "Выплата добавлена");
   });
   document.addEventListener("click", ev=>{
     const dp = ev.target.closest("[data-delpay]");
