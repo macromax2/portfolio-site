@@ -117,6 +117,11 @@ assert.ok(adapter.includes('state.serverCostBasis'), 'Серверная себ�
 assert.ok(adapter.includes('qty * avg'), 'Серверная себестоимость читается неверно');
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
-checks += 4;
+assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');
+assert.ok(html.includes("money(d.nkd)") && !html.includes('в т.ч. НКД'),
+          'НКД снова добавляется к стоимости в таблице');
+assert.ok(html.includes('total += m.clean') && html.includes('accruedTotal'),
+          'Общая стоимость включает НКД');
+checks += 7;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);

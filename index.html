@@ -185,6 +185,7 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
     <table>
       <thead><tr>
         <th>Бумага</th><th class="n">Кол-во</th><th class="n" title="Средняя цена покупки из брокерских отчётов: фиксируется при первом появлении бумаги и пересчитывается при докупке или продаже.">Цена покупки</th>
+        <th class="n" title="Накопленный купонный доход на всю позицию. В цену и стоимость не включается.">НКД</th>
         <th class="n">Стоимость по рынку</th><th class="n">Доля</th>
         <th class="n">Себестоимость</th><th class="n">P/L</th><th class="n">P/L %</th><th>Котировка</th>
       </tr></thead>
@@ -1376,8 +1377,14 @@ function corrBeta(returns, benchMap){
 function currentValue(){
   let v = cashEnd();
   const cb = costBasis();
-  reportPositions().forEach(p=>{ v += positionMetrics(p, cb, todayISO()).value; });
+  reportPositions().forEach(p=>{ v += positionMetrics(p, cb, todayISO()).clean; });
   return v;
+}
+function accruedTotal(){
+  const cb = costBasis();
+  let n = 0;
+  reportPositions().forEach(p=>{ n += positionMetrics(p, cb, todayISO()).nkd; });
+  return n;
 }
 
 /* ================= РЕНДЕР: ПОРТФЕЛЬ ================= */
@@ -1392,7 +1399,7 @@ function renderKpis(){
   const period = state.report.period;
   $("#kpis").innerHTML = [
     kpi("Стоимость портфеля", money(cur),
-        state.live ? "живые котировки" : "по данным отчёта на " + i2d(period && period.created)),
+        "без НКД · НКД " + money(accruedTotal()) + " отдельно"),
     kpi("Результат за период", (res>=0?"+":"")+money(res),
         "вложено нетто " + money(nf.net), cls(res)),
     kpi("Доходность за период", twr!=null?pct(twr):"—",
@@ -1413,8 +1420,10 @@ function renderPositions(){
   let total = 0;
   const data = rows.map(p=>{
     const m = positionMetrics(p, cb, todayISO());
-    total += m.value;
-    return {p, k:m.k, avg:m.avg, val:m.value, nkd:m.nkd,
+    // НКД показываем отдельной колонкой и не добавляем ни к цене, ни к
+    // рыночной стоимости, ни к P/L.
+    total += m.clean;
+    return {p, k:m.k, avg:m.avg, val:m.clean, nkd:m.nkd,
             cost:m.cost, pl:m.pl, plp:m.plp};
   });
   const cash = cashEnd();
@@ -1434,8 +1443,8 @@ function renderPositions(){
         (r?' · '+esc(r.type||""):'')+'</div></td>'+
       '<td class="n">'+NF0.format(d.p.qty)+'</td>'+
       '<td class="n">'+(avgShown!=null?NF.format(avgShown):"—")+'</td>'+
-      '<td class="n"><b>'+money(d.val)+'</b>'+
-        (d.nkd>0.005?'<div class="tik">в т.ч. НКД '+money(d.nkd)+'</div>':'')+'</td>'+
+      '<td class="n">'+(d.nkd>0.005?money(d.nkd):"—")+'</td>'+
+      '<td class="n"><b>'+money(d.val)+'</b></td>'+
       '<td class="n">'+share.toFixed(1)+'%</td>'+
       '<td class="n">'+money(d.cost)+'</td>'+
       '<td class="n '+cls(d.pl)+'">'+(d.pl>=0?"+":"")+NF.format(d.pl)+'</td>'+
@@ -1446,11 +1455,11 @@ function renderPositions(){
   }).join("");
   html += "<tr>"+
     '<td><div class="name">Денежные средства</div><div class="tik">на счёте</div></td>'+
-    '<td class="n">—</td><td class="n">—</td>'+
+    '<td class="n">—</td><td class="n">—</td><td class="n">—</td>'+
     '<td class="n"><b>'+money(cash)+'</b></td>'+
     '<td class="n">'+(total>0?(cash/total*100).toFixed(1):"0")+'%</td>'+
     '<td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>';
-  $("#posRows").innerHTML = html || '<tr><td colspan="8" class="empty">Нет позиций</td></tr>';
+  $("#posRows").innerHTML = html || '<tr><td colspan="10" class="empty">Нет позиций</td></tr>';
   renderDonut(data, cash, total);
 }
 function renderDonut(data, cash, total){
@@ -1810,7 +1819,7 @@ function classValues(){
     if(!p.qty) return;
     const m = positionMetrics(p, cb, todayISO());
     const cls = assetClass(m.k);
-    out[cls] = (out[cls]||0) + m.value;
+    out[cls] = (out[cls]||0) + m.clean;
   });
   return out;
 }
@@ -2787,7 +2796,7 @@ function bind(){
         const avg = m && m.qty ? m.cost/m.qty : null;
         const pos = qty>0 && m ? {
           count: qty, avg_price: isBond && avg!=null ? avg/10 : avg,
-          value: m.value, pl: m.pl, pl_pct: m.plp
+          value: m.clean, nkd: m.nkd, pl: m.pl, pl_pct: m.plp
         } : null;
         renderSecCard({
           isin: isin, secid: sec.SECID || secid,
@@ -2843,6 +2852,7 @@ function bind(){
       add("Количество", NF0.format(pos.count)+" шт");
       add("Средняя цена", pos.avg_price!=null ? NF.format(pos.avg_price)+(d.asset_type==="bond"?" %":" ₽") : "—");
       add("Стоимость", money(pos.value));
+      if(pos.nkd>0.005) add("НКД по позиции", money(pos.nkd));
       add("P/L", NF.format(pos.pl)+" ₽"+(pos.pl_pct!=null?" ("+pct(pos.pl_pct)+")":""));
     }
     let html = '<div class="kv">'+rows.join("")+'</div>';
