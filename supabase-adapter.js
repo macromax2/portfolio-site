@@ -71,13 +71,13 @@
     if (!rows || !rows.length) return null;
     var payloads = rows.map(function (r) { return r.payload || {}; });
     var first = payloads[0], last = payloads[payloads.length - 1];
-    // Стартовые остатки берём из первого отчёта, а не из последнего.
+    // Стартовые остатки берём ТОЛЬКО из первого отчёта. В более поздних
+    // отчётах qty_start — это уже остаток на их начало, и если перенести его
+    // в первый день, бумаги учтутся дважды: и как остаток, и как сделка.
     var inception = {};
-    payloads.forEach(function (p) {
-      (p.positions || []).forEach(function (pos) {
-        if (pos.isin && inception[pos.isin] === undefined && Number(pos.qty_start) > 0)
-          inception[pos.isin] = Number(pos.qty_start);
-      });
+    (first.positions || []).forEach(function (pos) {
+      if (pos.isin && Number(pos.qty_start) > 0)
+        inception[pos.isin] = Number(pos.qty_start);
     });
     state.inceptionQty = inception;
 
@@ -94,6 +94,11 @@
         created: (last.period || {}).created
       },
       positions: last.positions || [],
+      // Текущий денежный остаток берём из последнего отчёта: более ранние
+      // отчёты могут описывать другой охват счетов, и суммирование их кэша
+      // завышает остаток. Для истории TWR используется полный merged-журнал.
+      latestCashflow: last.cashflow || [],
+      latestAssets: last.assets || [],
       trades: mergeDedup_(payloads.map(function (p) { return p.trades; }), tradeKey_),
       cashflow: mergeDedup_(payloads.map(function (p) { return p.cashflow; }), cashKey_),
       assets: first.assets || last.assets || [],

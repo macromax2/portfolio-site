@@ -1029,9 +1029,11 @@ function netFlows(){
 }
 function cashEnd(){
   // cashflow нового отчёта не содержит входящего остатка — прибавляем его из оценки активов
-  const a = (state.report.assets||[])[0];
+  const a = (state.report.latestAssets || state.report.assets || [])[0];
   let c = a ? (a.start_cash||0) : 0;
-  (state.report.cashflow||[]).forEach(x=> c += (x.in||0) - (x.out||0));
+  // Мerged-журнал нужен только для истории; текущий кэш — из последнего отчёта.
+  const cashRows = state.report.latestCashflow || state.report.cashflow || [];
+  cashRows.forEach(x=> c += (x.in||0) - (x.out||0));
   // расчёты по «висящим» сделкам пройдут после конца периода: деньги ещё не списаны/зачислены
   pendingTrades().forEach(t=>{
     const s = t.qty > 0 ? 1 : -1;
