@@ -1138,6 +1138,29 @@ function quoteOf(secid){
   const p = reportPositions().find(p=> p.isin===secid || (r && r.isin && p.isin===r.isin));
   return p ? priceRub(secid, p.price) : null; // облигации в % от номинала → рубли
 }
+/* ================= ЕДИНЫЙ РАСЧЁТ СТОИМОСТИ И P/L ================= */
+// НКД — начисленный, но не выплаченный купон. Это не прибыль: в дату купона
+// он обнуляется. Поэтому P/L всегда сравнивает ЧИСТУЮ цену с чистой
+// себестоимостью. «Грязная» стоимость (чистая + НКД) нужна только для оценки
+// того, что вернётся при продаже, и совпадает с оценкой в отчёте брокера.
+// Все таблицы/карточки обязаны брать данные отсюда — иначе чистая цена
+// снова сравнится с грязной и облигация покажет фиктивные +7%.
+function positionMetrics(p, cb, isoDate){
+  const k = posKey(p);
+  const price = quoteOf(k);                       // чистая цена в ₽
+  const hasPrice = price != null;
+  const clean = hasPrice ? (p.qty||0)*price : (p.value||0);
+  const nkd = hasPrice ? (p.qty||0)*accruedOf(k, isoDate) : (p["nkд"]||0);
+  const c = cb[k] || cb[p.isin] || {cost:0, qty:0};
+  const cost = c.cost || 0;
+  const pl = clean - cost;                        // НИКОГДА не добавляем НКД сюда
+  return {
+    k, price, clean, nkd, value:clean+nkd,
+    cost, qty:c.qty||0,
+    avg:(p.qty||0)>0 ? cost/p.qty : null,
+    pl, plp:cost>0 ? pl/cost*100 : null
+  };
+}
 // стоимость портфеля на дату (по истории закрытий, ffill)
 // kind = null (весь портфель) / "ofz" / "corp" — для фильтра графика
 function buildTimeline(kind){
@@ -1353,13 +1376,7 @@ function corrBeta(returns, benchMap){
 function currentValue(){
   let v = cashEnd();
   const cb = costBasis();
-  reportPositions().forEach(p=>{
-    const r = refOf(p.isin);
-    const k = r?secidOf(r):p.isin;
-    const price = quoteOf(k);
-    if(price!=null && p.qty) v += p.qty*(price + accruedOf(k, todayISO())); // грязная цена
-    else v += (p.value||0) + (p["nkд"]||0); // без live: стоимость без НКД + НКД из отчёта
-  });
+  reportPositions().forEach(p=>{ v += positionMetrics(p, cb, todayISO()).value; });
   return v;
 }
 
@@ -1395,23 +1412,10 @@ function renderPositions(){
   const rows = reportPositions().filter(p=>p.qty);
   let total = 0;
   const data = rows.map(p=>{
-    const r = refOf(p.isin);
-    const k = r?secidOf(r):p.isin;
-    // Рыночная цена: чистая (как в отчёте) и грязная (чистая + НКД, что даст продажа).
-    const mkt = quoteOf(k);                       // уже в ₽ (для облигаций % → ₽)
-    const accr = mkt!=null ? accruedOf(k, todayISO()) : 0;
-    const nkd = mkt!=null ? p.qty*accr : (p["nkд"]||0);
-    const valClean = mkt!=null ? p.qty*mkt : (p.value||0);
-    const val = valClean + nkd;                   // показываемая стоимость — «грязная», как в отчёте
-    total += val;
-    const c = cb[k] || cb[p.isin] || {cost:0};
-    const avg = p.qty>0 ? c.cost/p.qty : null;    // себестоимость за штуку, чистая цена
-    // P/L считаем по чистой цене: НКД — не прибыль, а начисленный купон,
-    // который обнуляется в дату выплаты. Сравнение грязной цены с чистой
-    // себестоимостью давало фиктивные +7% по ОФЗ 26248.
-    const pl = valClean - c.cost;
-    const plp = c.cost>0 ? pl/c.cost*100 : null;
-    return {p, k, avg, val, nkd, cost:c.cost, pl, plp};
+    const m = positionMetrics(p, cb, todayISO());
+    total += m.value;
+    return {p, k:m.k, avg:m.avg, val:m.value, nkd:m.nkd,
+            cost:m.cost, pl:m.pl, plp:m.plp};
   });
   const cash = cashEnd();
   total += cash;
@@ -1797,15 +1801,12 @@ function assetClass(k){
 }
 function classValues(){
   const out = {ofz:0, corp:0, fund:0, stock:0, cash:Math.max(0,cashEnd())};
+  const cb = costBasis();
   reportPositions().forEach(p=>{
     if(!p.qty) return;
-    const r = refOf(p.isin), k = r ? secidOf(r) : p.isin;
-    const price = quoteOf(k);
-    // грязная цена, как в оценке портфеля: чистая + НКД
-    const v = price!=null ? p.qty*(price+accruedOf(k,todayISO())) :
-      (p.value||0)+(p["nkд"]||0);
-    const cls = assetClass(k);
-    out[cls] = (out[cls]||0) + v;
+    const m = positionMetrics(p, cb, todayISO());
+    const cls = assetClass(m.k);
+    out[cls] = (out[cls]||0) + m.value;
   });
   return out;
 }
@@ -2776,18 +2777,13 @@ function bind(){
           board: board, live: true, updated_at: md.UPDATETIME || md.SYSTIME
         };
         const row = reportPositions().find(x=>posKey(x)===secid);
-        const live = quoteOf(secid);
         const qty = row ? (row.qty||0) : 0;
-        const clean = live!=null && qty ? qty*live : (row ? (row.value||0) : 0);
-        const nkd = live!=null && qty ? qty*accruedOf(secid,todayISO()) : (row ? (row["nkд"]||0) : 0);
-        const value = clean + nkd;
-        const cb = costBasis()[secid] || {};
-        const cost = cb.cost || clean;
+        const m = row ? positionMetrics(row, costBasis(), todayISO()) : null;
         // В карточке средняя цена облигации показывается в % от номинала.
-        const avg = cb.qty ? cb.cost/cb.qty : null;
-        const pos = qty>0 ? {
+        const avg = m && m.qty ? m.cost/m.qty : null;
+        const pos = qty>0 && m ? {
           count: qty, avg_price: isBond && avg!=null ? avg/10 : avg,
-          value: value, pl: clean-cost, pl_pct: cost ? (clean-cost)/cost*100 : null
+          value: m.value, pl: m.pl, pl_pct: m.plp
         } : null;
         renderSecCard({
           isin: isin, secid: sec.SECID || secid,
