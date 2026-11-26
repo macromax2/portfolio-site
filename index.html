@@ -1737,15 +1737,19 @@ function syncNotifications(){
 /* Уже полученные выплаты берём из брокерских отчётов — это реальные
    записи «Выплата купонов/дивидендов», а не прогноз. */
 function paidPaymentItems(){
-  const today = todayISO(), out = [];
+  // В календаре показываем только текущий месяц: что уже выплачено в этом
+  // месяце и чего ждём в этом же месяце. «Далее» и «каждый месяц» остаются.
+  const today = todayISO(), month = today.slice(0,7), out = [];
   (state.report.cashflow||[]).forEach(x=>{
     const desc = String(x.desc||""), amt = Number(x.in||0), d = d2i(x.date);
-    if(!/выплата купонов|дивид/i.test(desc) || !(amt>0) || !d || d>=today) return;
+    if(!/выплата купонов|дивид/i.test(desc) || !(amt>0) || !d ||
+       d>=today || d.slice(0,7)!==month) return;
     out.push({date:d, name:desc, kind:/дивид/i.test(desc)?"Дивиденд":"Купон",
               amt:amt, paid:true, fromReport:true});
   });
   state.payments.forEach((p,idx)=>{
-    if(p.date && p.date<today) out.push(Object.assign({manual:true, idx:idx, paid:true}, p));
+    if(p.date && p.date<today && p.date.slice(0,7)===month)
+      out.push(Object.assign({manual:true, idx:idx, paid:true}, p));
   });
   const seen = {};
   return out.filter(it=>{
@@ -1826,7 +1830,7 @@ function renderPayments(){
   let html = "";
   if(paid.length){
     const paidTotal = paid.reduce((s,it)=>s+it.amt,0);
-    html += head("Уже выплачено · "+money(paidTotal));
+    html += head("Уже выплачено в этом месяце · "+money(paidTotal));
     html += paid.map(it=>payRow(it, it.idx)).join("");
   }
   if(items.length){

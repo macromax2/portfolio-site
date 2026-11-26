@@ -146,8 +146,9 @@ assert.ok(html.includes("money(d.nkd)") && !html.includes('в т.ч. НКД'),
 assert.ok(html.includes('total += m.clean') && html.includes('accruedTotal'),
           'Общая стоимость включает НКД');
 checks += 9;
-assert.ok(html.includes('paidPaymentItems') && html.includes('Уже выплачено'),
-          'Выплаченные купоны не показаны отдельно');
+assert.ok(html.includes('paidPaymentItems') && html.includes('Уже выплачено в этом месяце') &&
+          html.includes('d.slice(0,7)!==month'),
+          'Выплаченные купоны не ограничены текущим месяцем');
 assert.ok(html.includes('monthlyPaymentPlan') && html.includes('Ожидаем каждый месяц'),
           'Нет расчёта ожидаемой суммы каждый месяц');
 assert.ok(html.includes('COUPONPERIOD') && html.includes('365/q.COUPONPERIOD/12'),
