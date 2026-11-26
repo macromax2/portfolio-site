@@ -964,6 +964,9 @@ async function fetchImoex(){
 // сделки, расчёты по которым наступают после конца периода отчёта:
 // в таблице позиций их ещё нет, но бумага уже куплена (или продана)
 function pendingTrades(){
+  // Показываем состав строго по отчёту брокера: сделки с расчётом после
+  // даты отчёта уже учтены в следующем отчёте и здесь не дублируются.
+  return [];
   const to = d2i((state.report.period||{}).to || "");
   if(!to) return [];
   return (state.report.trades||[]).map(t=>{
@@ -984,7 +987,7 @@ function pendingTrades(){
 // чистые позиции отчёта (без строк-нумераторов) + «висящие» сделки
 function reportPositions(){
   const rows = (state.report.positions||[])
-    .filter(p=>p.name && !/^\d+$/.test(p.name))
+    .filter(p=>p.name && !/^\d+$/.test(p.name) && (p.qty||0)>0)
     .map(p=>Object.assign({}, p));
   const byIsin = {};
   rows.forEach(p=>{ if(p.isin) byIsin[p.isin] = p; });
