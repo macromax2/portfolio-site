@@ -945,6 +945,28 @@ async function fetchQuotes(secids){
   });
   return {data:out, failedBoards, staleUsed};
 }
+// ISS иногда отдаёт котировку облигации без NEXTCOUPON/COUPONVALUE в general
+// securities-блоке. Без них НКД за прошлые даты считается нулевым и TWR
+// «скачет» между устройствами. Добираем поля из персонального bond-энда.
+async function ensureBondCoupons(quotes, secids){
+  const need = secids.filter(sid=>{
+    const q = quotes[sid];
+    return q && isBondSec(sid) && (!q.NEXTCOUPON || !(q.COUPONVALUE>0));
+  });
+  await Promise.all(need.map(async sid=>{
+    const url = ISS + "/engines/stock/markets/bonds/securities/" + encodeURIComponent(sid) +
+      ".json?iss.meta=off&iss.only=securities&securities.columns=" +
+      "SECID,COUPONVALUE,NEXTCOUPON,COUPONPERIOD,ACCRUEDINT";
+    try{
+      const row = block(await jget(url), "securities")[0];
+      if(!row) return;
+      ["COUPONVALUE","NEXTCOUPON","COUPONPERIOD","ACCRUEDINT"].forEach(k=>{
+        if(row[k]!=null) quotes[sid][k] = row[k];
+      });
+      cacheQuote(sid, quotes[sid]);   // перезаписываем неполный кэш
+    }catch(e){ /* сеть недоступна — оставляем как есть, TWR не ломается */ }
+  }));
+}
 async function fetchHistory(secid){
   const ref = refOf(secid);
   const board = boardOf(ref);
@@ -2516,6 +2538,7 @@ async function refreshMarket(){
       fetchImoex().catch(()=>{ issues.push("индекс IMOEX"); return null; })
     ]);
     const quotes = qres.data;
+    await ensureBondCoupons(quotes, secids);   // НКД истории не зависит от ответа ISS
     state.quotes = quotes;
     if(qres.failedBoards.length) issues.push("котировки "+qres.failedBoards.join("/"));
     else if(qres.staleUsed.length) issues.push("котировки из кэша");

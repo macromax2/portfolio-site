@@ -160,5 +160,13 @@ assert.ok(html.includes('String(a.date).localeCompare(String(b.date))'),
 assert.ok(html.includes('(d2i(a.date)||"").localeCompare(d2i(b.date)||"")'),
           'Журнал сделок идёт не с начала портфеля');
 checks += 6;
+assert.ok(html.includes('async function ensureBondCoupons') &&
+          html.includes('await ensureBondCoupons(quotes, secids)'),
+          'Нет догрузки купонных полей, НКД истории зависит от ответа ISS');
+assert.ok(html.includes('/engines/stock/markets/bonds/securities/') &&
+          html.includes('COUPONVALUE,NEXTCOUPON,COUPONPERIOD,ACCRUEDINT') &&
+          html.includes('cacheQuote(sid, quotes[sid])'),
+          'Догрузка купонов не обновляет кэш котировок');
+checks += 2;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);
