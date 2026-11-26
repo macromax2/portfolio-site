@@ -14,6 +14,26 @@
   });
   var $ = function (s) { return document.querySelector(s); };
 
+  /* Настоящая себестоимость приходит с сервера: она накапливается из всех
+     брокерских отчётов (первое появление + докупки - продажи). Пользователь
+     ничего не вводит вручную. */
+  var originalCostBasis = (typeof costBasis === 'function') ? costBasis : null;
+  costBasis = function () {
+    var map = originalCostBasis ? originalCostBasis() : {};
+    var remote = state.serverCostBasis;
+    if (remote) {
+      Object.keys(remote).forEach(function (k) {
+        var r = remote[k];
+        map[k] = {
+          qty: r.qty, cost: r.cost,
+          realized: (map[k] && map[k].realized) || 0,
+          name: r.name || (map[k] && map[k].name) || k
+        };
+      });
+    }
+    return map;
+  };
+
   function statusSafe(msg, bad) {
     try { setStatus(msg, !!bad); } catch (e) { console.log(msg); }
   }
@@ -30,11 +50,23 @@
       sb.from('app_settings').select('*').eq('user_id', uid).maybeSingle(),
       sb.from('goals').select('*').eq('user_id', uid).order('position', { ascending: true }),
       sb.from('quotes').select('*').eq('user_id', uid),
+      sb.from('positions').select('*').eq('user_id', uid),
       sb.from('reports').select('payload').eq('user_id', uid)
         .order('imported_at', { ascending: false }).limit(1).maybeSingle()
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
-          quotes = res[2].data, report = res[3].data;
+          quotes = res[2].data, positions = res[3].data, report = res[4].data;
+
+      state.serverCostBasis = null;
+      var basis = {};
+      (positions || []).forEach(function (r) {
+        var k = r.ticker || r.isin;
+        if (!k) return;
+        var qty = Number(r.count) || 0;
+        var avg = Number(r.avg_price) || 0;   // ₽ за 1 шт, НКД исключён
+        basis[k] = { qty: qty, cost: qty * avg, avg: avg, name: r.name || k };
+      });
+      state.serverCostBasis = basis;
 
       if (report && report.payload && report.payload.period) {
         state.report = normalizeReport(report.payload);
@@ -189,6 +221,7 @@
     if (!currentAccount) { showAuth(); return; }
     sb.auth.signOut().then(function () {
       currentAccount = null;
+      state.serverCostBasis = null;
       btnUser.textContent = 'Войти';
       statusSafe('Вы вышли из аккаунта');
       showAuth();
