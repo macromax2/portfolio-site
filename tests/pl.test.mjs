@@ -123,6 +123,9 @@ assert.ok(html.includes('Журнал сделок из брокерских о�
 assert.ok(adapter.includes("sb.from('transactions')") &&
           adapter.includes('state.serverTrades'),
           'Адаптер не загружает журнал сделок с сервера');
+assert.ok(adapter.includes("order('date', { ascending: false })") &&
+          adapter.includes('}).reverse()'),
+          'Журнал сделок обрежется до самых старых записей');
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');

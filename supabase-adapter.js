@@ -58,8 +58,10 @@
         .order('period_to', { ascending: false })
         .order('report_created', { ascending: false })
         .limit(1).maybeSingle(),
+      // Берём последние 500 сделок, а не первые: через годы журнал вырос бы,
+      // и старый лимит показывал бы самые ранние трейды.
       sb.from('transactions').select('isin,ticker,operation_type,date,count,price,amount')
-        .eq('user_id', uid).order('date', { ascending: true }).limit(500)
+        .eq('user_id', uid).order('date', { ascending: false }).limit(500)
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
           quotes = res[2].data, positions = res[3].data, report = res[4].data,
@@ -68,7 +70,7 @@
       // как отдельное событие, даже если позиция закрылась и открылась заново.
       state.serverTrades = (trades || []).filter(function (t) {
         return t.operation_type === 'buy' || t.operation_type === 'sell';
-      });
+      }).reverse();
 
       state.serverCostBasis = null;
       var basis = {};
