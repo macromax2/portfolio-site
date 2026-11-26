@@ -115,6 +115,9 @@ const adapter = readFileSync(new URL('../supabase-adapter.js', import.meta.url),
 assert.ok(!html.includes('manualCost'), 'Ручная цена покупки снова появилась в интерфейсе');
 assert.ok(adapter.includes('state.serverCostBasis'), 'Серверная себестоимость не подключается');
 assert.ok(adapter.includes('qty * avg'), 'Серверная себестоимость читается неверно');
+assert.ok(adapter.includes("order('period_to', { ascending: false })") &&
+          !adapter.includes("order('imported_at', { ascending: false })"),
+          'Дашборд берёт последний загруженный отчёт вместо последнего по дате');
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');

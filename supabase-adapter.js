@@ -51,8 +51,13 @@
       sb.from('goals').select('*').eq('user_id', uid).order('position', { ascending: true }),
       sb.from('quotes').select('*').eq('user_id', uid),
       sb.from('positions').select('*').eq('user_id', uid),
+      // Берём последний по дате отчёт, а не последний загруженный: после
+      // backfill старые письма импортируются позже нового и иначе дашборд
+      // показывает устаревший состав портфеля.
       sb.from('reports').select('payload').eq('user_id', uid)
-        .order('imported_at', { ascending: false }).limit(1).maybeSingle()
+        .order('period_to', { ascending: false })
+        .order('report_created', { ascending: false })
+        .limit(1).maybeSingle()
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
           quotes = res[2].data, positions = res[3].data, report = res[4].data;
