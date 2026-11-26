@@ -949,7 +949,7 @@ async function fetchHistory(secid){
   const from = b.from || "2026-01-01", till = b.to || todayISO();
   const url = ISS + "/history/engines/stock/markets/" + marketOf(board) + "/boards/" + board +
     "/securities/" + encodeURIComponent(secid) + ".json?iss.meta=off&from=" + from +
-    "&till=" + till + "&history.columns=TRADEDATE,CLOSE&limit=1000";
+    "&till=" + till + "&history.columns=TRADEDATE,CLOSE&limit=5000";
   const j = await jget(url);
   const map = {};
   block(j,"history").forEach(o=>{ if(o.CLOSE!=null) map[o.TRADEDATE] = o.CLOSE; });
@@ -1246,7 +1246,12 @@ function buildTimeline(kind){
   // стартовые количества и денежная база группы
   const qty = {}, allPositions = reportPositions();
   const included = allPositions.filter(p=>!kind || secInKind(posKey(p),kind));
-  included.forEach(p=>{ qty[posKey(p)] = (p.qty_start||0); });
+  // Старт истории — остатки из первого отчёта, а не из последнего: иначе
+  // сегодняшние позиции «появляются» в первый день и портят TWR.
+  const inception = state.inceptionQty || {};
+  included.forEach(p=>{
+    qty[posKey(p)] = inception[p.isin]!=null ? inception[p.isin] : (p.qty_start||0);
+  });
   // группе нельзя приписывать отрицательный «денежный» остаток всего портфеля:
   // у неё свой старт — только её бумаги, пополнения приходят внешним потоком
   // Стартовый кэш берём из отчёта: разница start_total - сумма value_start

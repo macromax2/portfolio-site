@@ -115,9 +115,6 @@ const adapter = readFileSync(new URL('../supabase-adapter.js', import.meta.url),
 assert.ok(!html.includes('manualCost'), 'Ручная цена покупки снова появилась в интерфейсе');
 assert.ok(adapter.includes('state.serverCostBasis'), 'Серверная себестоимость не подключается');
 assert.ok(adapter.includes('qty * avg'), 'Серверная себестоимость читается неверно');
-assert.ok(adapter.includes("order('period_to', { ascending: false })") &&
-          !adapter.includes("order('imported_at', { ascending: false })"),
-          'Дашборд берёт последний загруженный отчёт вместо последнего по дате');
 assert.ok(html.includes('Журнал сделок из брокерских отчётов'),
           'В карточке бумаги нет журнала сделок');
 assert.ok(adapter.includes("sb.from('transactions')") &&
@@ -126,6 +123,15 @@ assert.ok(adapter.includes("sb.from('transactions')") &&
 assert.ok(adapter.includes("order('date', { ascending: false })") &&
           adapter.includes('}).reverse()'),
           'Журнал сделок обрежется до самых старых записей');
+assert.ok(adapter.includes('mergeReports_') && adapter.includes('state.inceptionQty'),
+          'Адаптер не собирает историю всех отчётов с начала портфеля');
+assert.ok(adapter.includes(".order('period_from', { ascending: true })") &&
+          !adapter.includes(".limit(1).maybeSingle()"),
+          'Адаптер берёт только последний отчёт');
+assert.ok(html.includes('state.inceptionQty') &&
+          html.includes('limit=5000'),
+          'TWR/IMOEX считаются не с начала истории');
+checks += 4;
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');

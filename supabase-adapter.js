@@ -34,6 +34,73 @@
     return map;
   };
 
+  /* Собираем все отчёты в одну линию с самого начала портфеля. Отчёты
+     пересекаются по датам, поэтому сделки и движение денег объединяем как
+     мультимножество: если операция встречается в нескольких отчётах, берём
+     её максимальную повторяемость, а не сумму. */
+  function mergeDedup_(lists, keyFn) {
+    var best = {}, order = [];
+    lists.forEach(function (list) {
+      var local = {};
+      (list || []).forEach(function (item) {
+        var k = keyFn(item);
+        if (!local[k]) local[k] = { item: item, n: 0 };
+        local[k].n++;
+      });
+      Object.keys(local).forEach(function (k) {
+        if (!best[k] || local[k].n > best[k].n) {
+          best[k] = local[k];
+          if (order.indexOf(k) < 0) order.push(k);
+        }
+      });
+    });
+    var out = [];
+    order.forEach(function (k) {
+      for (var i = 0; i < best[k].n; i++) out.push(best[k].item);
+    });
+    return out;
+  }
+  function tradeKey_(t) {
+    return JSON.stringify([t.date, t.settle, t.name, t.code, t.side, t.qty,
+                           t.price, t.amount, t['nkд']]);
+  }
+  function cashKey_(c) {
+    return JSON.stringify([c.date, c.desc, c.in, c.out]);
+  }
+  function mergeReports_(rows) {
+    if (!rows || !rows.length) return null;
+    var payloads = rows.map(function (r) { return r.payload || {}; });
+    var first = payloads[0], last = payloads[payloads.length - 1];
+    // Стартовые остатки берём из первого отчёта, а не из последнего.
+    var inception = {};
+    payloads.forEach(function (p) {
+      (p.positions || []).forEach(function (pos) {
+        if (pos.isin && inception[pos.isin] === undefined && Number(pos.qty_start) > 0)
+          inception[pos.isin] = Number(pos.qty_start);
+      });
+    });
+    state.inceptionQty = inception;
+
+    var refs = {};
+    payloads.forEach(function (p) {
+      (p.reference || []).forEach(function (r) {
+        if (r.isin) refs[r.isin] = r;
+      });
+    });
+    return {
+      period: {
+        from: rows[0].period_from || (first.period || {}).from,
+        to: rows[rows.length - 1].period_to || (last.period || {}).to,
+        created: (last.period || {}).created
+      },
+      positions: last.positions || [],
+      trades: mergeDedup_(payloads.map(function (p) { return p.trades; }), tradeKey_),
+      cashflow: mergeDedup_(payloads.map(function (p) { return p.cashflow; }), cashKey_),
+      assets: first.assets || last.assets || [],
+      reference: Object.keys(refs).map(function (k) { return refs[k]; })
+    };
+  }
+
   function statusSafe(msg, bad) {
     try { setStatus(msg, !!bad); } catch (e) { console.log(msg); }
   }
@@ -51,20 +118,19 @@
       sb.from('goals').select('*').eq('user_id', uid).order('position', { ascending: true }),
       sb.from('quotes').select('*').eq('user_id', uid),
       sb.from('positions').select('*').eq('user_id', uid),
-      // Берём последний по дате отчёт, а не последний загруженный: после
-      // backfill старые письма импортируются позже нового и иначе дашборд
-      // показывает устаревший состав портфеля.
-      sb.from('reports').select('payload').eq('user_id', uid)
-        .order('period_to', { ascending: false })
-        .order('report_created', { ascending: false })
-        .limit(1).maybeSingle(),
+      // Берём все отчёты: состав — из последнего, а история, TWR и IMOEX
+      // считаются с самого первого отчёта.
+      sb.from('reports').select('period_from,period_to,payload').eq('user_id', uid)
+        .order('period_from', { ascending: true })
+        .order('imported_at', { ascending: true })
+        .limit(500),
       // Берём последние 500 сделок, а не первые: через годы журнал вырос бы,
       // и старый лимит показывал бы самые ранние трейды.
       sb.from('transactions').select('isin,ticker,operation_type,date,count,price,amount')
         .eq('user_id', uid).order('date', { ascending: false }).limit(500)
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
-          quotes = res[2].data, positions = res[3].data, report = res[4].data,
+          quotes = res[2].data, positions = res[3].data, reportRows = res[4].data || [],
           trades = res[5].data;
       // Журнал сделок нужен карточке бумаги: покупка/продажа фиксируется
       // как отдельное событие, даже если позиция закрылась и открылась заново.
@@ -83,8 +149,10 @@
       });
       state.serverCostBasis = basis;
 
-      if (report && report.payload && report.payload.period) {
-        state.report = normalizeReport(report.payload);
+      var merged = mergeReports_(reportRows);
+      if (merged && merged.period && merged.period.from) {
+        state.reports = reportRows;
+        state.report = normalizeReport(merged);
         state.history = {}; state.imoex = {}; state.twr = null;
         state.imoexTwr = null; state.kindTwr = {}; state.idxFilter = null;
       }
