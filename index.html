@@ -184,9 +184,6 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
 <section id="tab-portfolio" class="on">
   <div class="grid kpis" id="kpis"></div>
 
-  <h2>Реализованный результат</h2>
-  <div class="card" id="realizedBox"></div>
-
   <h2>Состав портфеля</h2>
   <div class="card">
     <div class="tscroll">
@@ -1471,33 +1468,6 @@ function renderKpis(){
         im!=null?cls(im):"")
   ].join("");
 }
-// Реализованный P/L накапливается сервером из всех сделок: покупка фиксирует
-// цену, продажа списывает её пропорционально, полный выход обнуляет позицию.
-// В таблице позиций виден только незавершённый результат по остаткам.
-function realizedRows(){
-  return Object.entries(costBasis())
-    .map(([k,v])=>({k, name:v.name||k, realized:v.realized||0}))
-    .filter(r=>Math.abs(r.realized)>0.004)
-    .sort((a,b)=>b.realized-a.realized);
-}
-function renderRealized(){
-  const box = $("#realizedBox"); if(!box) return;
-  const rows = realizedRows();
-  if(!rows.length){
-    box.innerHTML = '<div class="empty">Продаж пока нет — реализованный результат появится после первого отчёта с продажей.</div>';
-    return;
-  }
-  const total = rows.reduce((s,r)=>s+r.realized,0);
-  box.innerHTML =
-    '<div class="rowcard"><div><div class="name">Всего реализовано</div>'+
-    '<div class="tik">'+rows.length+' эмитентов · по сделкам из брокерских отчётов</div></div>'+
-    '<div style="text-align:right"><b class="'+cls(total)+'">'+
-    (total>=0?"+":"")+money(total)+'</b></div></div>'+
-    rows.map(r=>'<div class="rowcard"><div><div class="name">'+esc(r.name)+'</div>'+
-      '<div class="tik">'+esc(r.k)+'</div></div>'+
-      '<div style="text-align:right"><b class="'+cls(r.realized)+'">'+
-      (r.realized>=0?"+":"")+money(r.realized)+'</b></div></div>').join("");
-}
 function kpi(lab, val, sub, c){
   return '<div class="card kpi"><div class="lab">'+esc(lab)+'</div>'+
          '<div class="val '+(c||"")+'">'+val+'</div>'+
@@ -2557,7 +2527,7 @@ function renderTrades(){
 
 /* ================= ОБЩИЙ РЕНДЕР ================= */
 function renderAll(){
-  renderKpis(); renderRealized(); renderPositions();
+  renderKpis(); renderPositions();
   renderIndex(); renderPayments(); renderGoals(); renderTrades();
   const p = state.report.period;
   $("#foot").innerHTML = "Отчёт за период "+
