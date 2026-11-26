@@ -14,6 +14,45 @@
   });
   var $ = function (s) { return document.querySelector(s); };
 
+  /* Брокеры не смешиваются: в каждый момент показываем только одного.
+     Переключатель появляется, только если данных двух брокеров больше одного. */
+  var activeBroker = localStorage.getItem('pf_broker') || 'sber';
+  var availableBrokers = ['sber'];
+  var BROKER_LABEL = {sber: 'Сбер', tinvest: 'Т‑Инвестиции'};
+  function brokerOf(row) { return row && row.broker ? row.broker : 'sber'; }
+  function renderBrokerSwitch() {
+    var host = document.getElementById('brokerSwitch');
+    if (!host) return;
+    if (availableBrokers.length < 2) { host.hidden = true; host.innerHTML = ''; return; }
+    host.hidden = false;
+    host.innerHTML = availableBrokers.map(function (b) {
+      return '<button type="button" data-broker="' + b + '" class="' +
+        (b === activeBroker ? 'on' : '') + '">' + (BROKER_LABEL[b] || b) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(host.querySelectorAll('button'), function (btn) {
+      btn.addEventListener('click', function () {
+        var next = btn.getAttribute('data-broker');
+        if (!next || next === activeBroker) return;
+        activeBroker = next;
+        localStorage.setItem('pf_broker', next);
+        if (currentAccount) {
+          applyRemote(currentAccount.id).then(function () { renderAll(); });
+        } else {
+          renderBrokerSwitch();
+        }
+      });
+    });
+  }
+  window.setActiveBroker = function (b) {
+    if (availableBrokers.indexOf(b) < 0) return false;
+    activeBroker = b;
+    localStorage.setItem('pf_broker', b);
+    renderBrokerSwitch();
+    return true;
+  };
+  window.getActiveBroker = function () { return activeBroker; };
+  window.getAvailableBrokers = function () { return availableBrokers.slice(); };
+
   /* Настоящая себестоимость приходит с сервера: она накапливается из всех
      брокерских отчётов (первое появление + докупки - продажи). Пользователь
      ничего не вводит вручную. */
@@ -121,22 +160,38 @@
     return Promise.all([
       sb.from('app_settings').select('*').eq('user_id', uid).maybeSingle(),
       sb.from('goals').select('*').eq('user_id', uid).order('position', { ascending: true }),
-      sb.from('quotes').select('*').eq('user_id', uid),
-      sb.from('positions').select('*').eq('user_id', uid),
+      sb.from('quotes').select('*').eq('user_id', uid).eq('broker', activeBroker),
+      sb.from('positions').select('*').eq('user_id', uid).eq('broker', activeBroker),
       // Берём все отчёты: состав — из последнего, а история, TWR и IMOEX
-      // считаются с самого первого отчёта.
-      sb.from('reports').select('period_from,period_to,payload').eq('user_id', uid)
+      // считаются с самого первого отчёта. Фильтр по брокеру — здесь, чтобы
+      // переключатель знал, какие брокеры реально есть у пользователя.
+      sb.from('reports').select('broker,period_from,period_to,payload').eq('user_id', uid)
         .order('period_from', { ascending: true })
         .order('imported_at', { ascending: true })
         .limit(500),
       // Берём последние 500 сделок, а не первые: через годы журнал вырос бы,
       // и старый лимит показывал бы самые ранние трейды.
-      sb.from('transactions').select('isin,ticker,operation_type,date,count,price,amount')
-        .eq('user_id', uid).order('date', { ascending: false }).limit(500)
+      sb.from('transactions').select('broker,isin,ticker,operation_type,date,count,price,amount')
+        .eq('user_id', uid).order('date', { ascending: false }).limit(500),
+      sb.from('broker_accounts').select('broker,account_id,status,enabled')
+        .eq('user_id', uid).eq('enabled', true)
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
-          quotes = res[2].data, positions = res[3].data, reportRows = res[4].data || [],
-          trades = res[5].data;
+          quotes = res[2].data, positions = res[3].data,
+          allReportRows = res[4].data || [], allTrades = res[5].data || [],
+          brokerAccounts = res[6].data || [];
+      var found = {};
+      allReportRows.forEach(function (r) { found[brokerOf(r)] = true; });
+      brokerAccounts.forEach(function (r) { if (brokerOf(r) === 'tinvest') found.tinvest = true; });
+      availableBrokers = Object.keys(found).sort(function (a, b) {
+        return (a === 'sber' ? -1 : b === 'sber' ? 1 : a.localeCompare(b));
+      });
+      if (!availableBrokers.length) availableBrokers = ['sber'];
+      if (availableBrokers.indexOf(activeBroker) < 0) activeBroker = availableBrokers[0];
+      localStorage.setItem('pf_broker', activeBroker);
+      var reportRows = allReportRows.filter(function (r) { return brokerOf(r) === activeBroker; });
+      var trades = allTrades.filter(function (t) { return brokerOf(t) === activeBroker; });
+      renderBrokerSwitch();
       // Журнал сделок нужен карточке бумаги: покупка/продажа фиксируется
       // как отдельное событие, даже если позиция закрылась и открылась заново.
       state.serverTrades = (trades || []).filter(function (t) {
@@ -180,6 +235,7 @@
           };
         });
       }
+      state.quotes = {};
       if (quotes && quotes.length) {
         quotes.forEach(function (r) {
           var secid = r.secid || r.ticker;

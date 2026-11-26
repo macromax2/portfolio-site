@@ -131,6 +131,9 @@ input:focus,select:focus{outline:2px solid #c7d7fd;border-color:var(--blue)}
 .reco{background:var(--reco-bg);border:1px solid var(--reco-line);color:var(--reco-text);border-radius:10px;
   padding:11px 14px;font-size:13.5px;margin:8px 0}
 .filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.broker-switch{display:inline-flex;gap:2px;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--card)}
+.broker-switch button{border:0;background:transparent;color:var(--muted);font-size:12px;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.broker-switch button.on{background:var(--accent);color:#fff}
 .filters select,.filters input{width:auto;min-width:150px}
 footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);font-size:12.5px}
 @media(max-width:640px){
@@ -149,6 +152,9 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
   th,td{padding:7px 7px}
   th{font-size:11.5px}
   .form{grid-template-columns:1fr}
+  .broker-switch{display:inline-flex;gap:2px;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--card)}
+  .broker-switch button{border:0;background:transparent;color:var(--muted);font-size:12px;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .broker-switch button.on{background:var(--accent);color:#fff}
   .filters select,.filters input{width:100%;min-width:0}
   .donut{gap:14px}
   .goalhead .pct{font-size:19px}
@@ -162,6 +168,7 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
     <h1>📈 Мой <span>портфель</span></h1>
     <span class="status" id="status">Загрузка…</span>
     <span class="spacer"></span>
+    <div class="broker-switch" id="brokerSwitch" hidden></div>
     <button class="btn ghost" id="btnImport">Загрузить отчёт</button>
     <button class="btn ghost" id="btnSync">Синхронизировать с почтой</button>
     <button class="btn" id="btnRefresh">Обновить котировки</button>
@@ -674,7 +681,8 @@ let state = {
   rebalanceTargets: {ofz:67, corp:33, fund:0, stock:0, cash:0},
   loading: true,     // идёт загрузка котировок (для текста на графике)
   refreshIssues: [], // что не удалось обновить при последнем refresh
-  live: false
+  live: false,
+  activeBroker: 'sber'   // 'sber' | 'tinvest'; переключатель скрыт, если брокер один
 };
 function save(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify({
