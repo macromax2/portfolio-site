@@ -1742,7 +1742,7 @@ function paidPaymentItems(){
     const desc = String(x.desc||""), amt = Number(x.in||0), d = d2i(x.date);
     if(!/выплата купонов|дивид/i.test(desc) || !(amt>0) || !d || d>=today) return;
     out.push({date:d, name:desc, kind:/дивид/i.test(desc)?"Дивиденд":"Купон",
-              amt:amt, paid:true, auto:true});
+              amt:amt, paid:true, fromReport:true});
   });
   state.payments.forEach((p,idx)=>{
     if(p.date && p.date<today) out.push(Object.assign({manual:true, idx:idx, paid:true}, p));
@@ -1843,8 +1843,9 @@ function payRow(it, idx){
   return '<div class="rowcard"><div>'+
     '<div class="name">'+esc(it.name)+'</div>'+
     '<div class="tik">'+fmtDateRu(it.date)+(it.kind?" · "+esc(it.kind):"")+
-      (it.auto?" · по данным ISS":"")+(it.manual?" · вручную":"")+
-      (it.paid?" · выплачено":"")+(it.recurring?" · каждый месяц":"")+'</div></div>'+
+      (it.auto?" · по данным ISS":"")+(it.fromReport?" · из отчёта":"")+
+      (it.manual?" · вручную":"")+(it.paid?" · выплачено":"")+
+      (it.recurring?" · каждый месяц":"")+'</div></div>'+
     '<div style="text-align:right"><b class="'+amountClass+'">'+
     (it.paid?"":"+")+money(it.amt)+'</b>'+
     (idx!=null?' <button class="btn small danger" data-delpay="'+idx+'">✕</button>':'')+
