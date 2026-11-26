@@ -2779,8 +2779,10 @@ function bind(){
           : (row ? (row.value||0)+(row["nkд"]||0) : 0);
         const cb = costBasis()[secid] || {};
         const cost = cb.cost || value;
+        // В карточке средняя цена облигации показывается в % от номинала.
+        const avg = cb.qty ? cb.cost/cb.qty : null;
         const pos = qty>0 ? {
-          count: qty, avg_price: cb.qty ? cb.cost/cb.qty : null,
+          count: qty, avg_price: isBond && avg!=null ? avg/10 : avg,
           value: value, pl: value-cost, pl_pct: cost ? (value-cost)/cost*100 : null
         } : null;
         renderSecCard({
@@ -2790,7 +2792,8 @@ function bind(){
           asset_type: isBond ? "bond" : (/фонд/i.test(kind) ? "etf" : "share"),
           quote: q,
           bond: {
-            maturity_date: b0.MATDATE, offer_date: b0.OFFERDATE || b0.BUYBACKDATE,
+            maturity_date: b0.MATDATE,
+            offer_date: [b0.OFFERDATE, b0.BUYBACKDATE].find(x=>x && !String(x).startsWith("0000")) || null,
             coupon_value: b0.COUPONVALUE, next_coupon_date: b0.NEXTCOUPON,
             coupon_period: b0.COUPONPERIOD, nominal: b0.FACEVALUE
           },
