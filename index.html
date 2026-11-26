@@ -961,7 +961,7 @@ async function fetchImoex(){
   const b = periodBounds();
   const from = b.from || "2026-01-01", till = b.to || todayISO();
   const url = ISS + "/history/engines/stock/markets/index/securities/IMOEX.json?iss.meta=off&from=" +
-    from + "&till=" + till + "&history.columns=TRADEDATE,CLOSE&limit=1000";
+    from + "&till=" + till + "&history.columns=TRADEDATE,CLOSE&limit=5000";
   const j = await jget(url);
   const map = {};
   block(j,"history").forEach(o=>{ if(o.CLOSE!=null) map[o.TRADEDATE] = o.CLOSE; });

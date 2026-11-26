@@ -129,7 +129,8 @@ assert.ok(adapter.includes(".order('period_from', { ascending: true })") &&
           !adapter.includes(".limit(1).maybeSingle()"),
           'Адаптер берёт только последний отчёт');
 assert.ok(html.includes('state.inceptionQty') &&
-          html.includes('limit=5000'),
+          html.includes('limit=5000') &&
+          html.includes('IMOEX.json?iss.meta=off&from='),
           'TWR/IMOEX считаются не с начала истории');
 assert.ok(html.includes('cashTradeDates') && html.includes('cashFeeDates'),
           'Недостающие денежные проводки по сделкам не добавляются');
