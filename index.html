@@ -1221,7 +1221,10 @@ function buildTimeline(kind){
   included.forEach(p=>{ qty[posKey(p)] = (p.qty_start||0); });
   // группе нельзя приписывать отрицательный «денежный» остаток всего портфеля:
   // у неё свой старт — только её бумаги, пополнения приходят внешним потоком
-  const cash0 = kind ? 0 : startValue() - allPositions.reduce((s,p)=>s+(p.value_start||0),0);
+  // Стартовый кэш берём из отчёта: разница start_total - сумма value_start
+  // включает НКД и проданные бумаги и не является денежным остатком.
+  const asset0 = (state.report.assets||[])[0] || {};
+  const cash0 = kind ? 0 : (asset0.start_cash||0);
   let cash = cash0;
   // цена: ffill по каждой бумаге
   const price = {};
@@ -2745,7 +2748,58 @@ function bind(){
     $("#scBody").innerHTML = '<div class="muted small">Загрузка данных MOEX…</div>';
     $("#scTpulse").hidden = true;
     if(window.API === null){
-      $("#scBody").innerHTML = '<div class="warn">Сервер не запущен — карточка с данными MOEX (YTM, купоны, НКД, оферта) доступна в режиме с бэкендом.</div>';
+      // Статический режим: ходим в MOEX ISS прямо из браузера.
+      try{
+        const ref = refOf(isin) || {};
+        const secid = secidOf(ref) || isin;
+        const kind = String(ref.type||"");
+        const isBond = /облигац|государственн/i.test(kind);
+        const board = boardOf(ref) || (isBond ? "TQOB" : "TQBR");
+        const market = isBond ? "bonds" : (/фонд/i.test(kind) ? "fonds" : "shares");
+        const url = "https://iss.moex.com/iss/engines/stock/markets/"+market+
+                    "/boards/"+board+"/securities/"+encodeURIComponent(secid)+".json?iss.meta=off";
+        const j = await jget(url);
+        const sec = block(j,"securities")[0] || {};
+        const md = block(j,"marketdata")[0] || {};
+        const bj = isBond ? await jget("https://iss.moex.com/iss/engines/stock/markets/bonds/securities/"+
+                     encodeURIComponent(secid)+".json?iss.meta=off") : null;
+        const b0 = bj ? (block(bj,"securities")[0] || {}) : {};
+        const q = {
+          price: md.LAST!=null ? md.LAST : (md.MARKETPRICE!=null ? md.MARKETPRICE : (md.CLOSEPRICE!=null ? md.CLOSEPRICE : md.PREVPRICE)),
+          change_pct: md.LASTCHANGEPRCNT,
+          yield: md.YIELD!=null ? md.YIELD : (md.CLOSEYIELD!=null ? md.CLOSEYIELD : md.YIELDATWAPRICE),
+          accrued: md.ACCRUEDINT!=null ? md.ACCRUEDINT : sec.ACCRUEDINT,
+          board: board, live: true, updated_at: md.UPDATETIME || md.SYSTIME
+        };
+        const row = reportPositions().find(x=>posKey(x)===secid);
+        const live = quoteOf(secid);
+        const qty = row ? (row.qty||0) : 0;
+        const value = live!=null && qty
+          ? qty*(live+accruedOf(secid,todayISO()))
+          : (row ? (row.value||0)+(row["nkд"]||0) : 0);
+        const cb = costBasis()[secid] || {};
+        const cost = cb.cost || value;
+        const pos = qty>0 ? {
+          count: qty, avg_price: cb.qty ? cb.cost/cb.qty : null,
+          value: value, pl: value-cost, pl_pct: cost ? (value-cost)/cost*100 : null
+        } : null;
+        renderSecCard({
+          isin: isin, secid: sec.SECID || secid,
+          name: ref.name || sec.SECNAME || isin,
+          shortname: sec.SHORTNAME || ref.name || isin,
+          asset_type: isBond ? "bond" : (/фонд/i.test(kind) ? "etf" : "share"),
+          quote: q,
+          bond: {
+            maturity_date: b0.MATDATE, offer_date: b0.OFFERDATE || b0.BUYBACKDATE,
+            coupon_value: b0.COUPONVALUE, next_coupon_date: b0.NEXTCOUPON,
+            coupon_period: b0.COUPONPERIOD, nominal: b0.FACEVALUE
+          },
+          position: pos,
+          history: state.history[secid] || []
+        });
+      }catch(e){
+        $("#scBody").innerHTML = '<div class="warn">Не удалось получить данные MOEX: '+esc(e.message)+'</div>';
+      }
       return;
     }
     let d;
