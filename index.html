@@ -169,6 +169,7 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
     <span class="status" id="status">Загрузка…</span>
     <span class="spacer"></span>
     <div class="broker-switch" id="brokerSwitch" hidden></div>
+    <button class="btn ghost small" id="btnConnectBroker" hidden>＋ Т‑Инвестиции</button>
     <button class="btn ghost" id="btnImport">Загрузить отчёт</button>
     <button class="btn ghost" id="btnSync">Синхронизировать с почтой</button>
     <button class="btn" id="btnRefresh">Обновить котировки</button>
@@ -384,6 +385,26 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
         <button type="submit" class="btn" id="authSubmit">Войти</button>
       </div>
       <div class="small" id="authError" style="color:var(--red);min-height:18px"></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="brokerModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="brokerTitle" style="max-width:460px">
+    <h3 id="brokerTitle">Подключить Т‑Инвестиции</h3>
+    <div class="small muted">Данные Сбера и Т‑Инвестиций хранятся раздельно. Токен нужен только для чтения — он не сможет менять заявки или выводить деньги.</div>
+    <ol class="small muted" style="line-height:1.7;padding-left:20px">
+      <li>Откройте <a href="https://www.tbank.ru/invest/settings/" target="_blank" rel="noopener noreferrer">настройки Т‑Инвестиций</a>.</li>
+      <li>Создайте токен API с доступом <b>только на чтение</b>.</li>
+      <li>Вставьте токен сюда — он сохранится на сервере и появится в дашборде в течение 15 минут.</li>
+    </ol>
+    <form id="brokerForm" class="form">
+      <label>Токен API (read-only)<input id="brokerToken" type="password" required minlength="20" autocomplete="off" placeholder="Вставьте токен из настроек Т‑Инвестиций"/></label>
+      <div class="acts">
+        <button type="button" class="btn ghost small" id="brokerCancel">Отмена</button>
+        <button type="submit" class="btn" id="brokerSubmit">Подключить</button>
+      </div>
+      <div class="small" id="brokerError" style="color:var(--red);min-height:18px"></div>
     </form>
   </div>
 </div>

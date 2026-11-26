@@ -22,6 +22,8 @@
   function brokerOf(row) { return row && row.broker ? row.broker : 'sber'; }
   function renderBrokerSwitch() {
     var host = document.getElementById('brokerSwitch');
+    var connect = document.getElementById('btnConnectBroker');
+    if (connect) connect.hidden = !currentAccount || availableBrokers.indexOf('tinvest') >= 0;
     if (!host) return;
     if (availableBrokers.length < 2) { host.hidden = true; host.innerHTML = ''; return; }
     host.hidden = false;
@@ -315,6 +317,9 @@
   var authToggle = take('authToggle');
   var btnUser = take('btnUser');
   var btnSync = take('btnSync');
+  var btnConnect = take('btnConnectBroker');
+  var brokerForm = take('brokerForm');
+  var brokerCancel = take('brokerCancel');
 
   function paintMode() {
     var reg = mode === 'register';
@@ -371,6 +376,40 @@
       showAuth();
     });
   });
+  if (btnConnect) {
+    btnConnect.addEventListener('click', function () {
+      if (!currentAccount) { showAuth(); return; }
+      if ($('#brokerModal')) $('#brokerModal').hidden = false;
+      if ($('#brokerError')) $('#brokerError').textContent = '';
+      if ($('#brokerToken')) $('#brokerToken').focus();
+    });
+  }
+  if (brokerCancel) brokerCancel.addEventListener('click', function () {
+    if ($('#brokerModal')) $('#brokerModal').hidden = true;
+  });
+  if (brokerForm) brokerForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!currentAccount) { showAuth(); return; }
+    var token = ($('#brokerToken') || {}).value || '';
+    token = token.trim();
+    if (token.length < 20) {
+      if ($('#brokerError')) $('#brokerError').textContent = 'Токен выглядит слишком коротким';
+      return;
+    }
+    if ($('#brokerSubmit')) $('#brokerSubmit').disabled = true;
+    sb.rpc('save_broker_token', { p_token: token, p_broker: 'tinvest' }).then(function (out) {
+      if (out.error) throw out.error;
+      if ($('#brokerModal')) $('#brokerModal').hidden = true;
+      if ($('#brokerToken')) $('#brokerToken').value = '';
+      statusSafe('Токен сохранён. Данные Т‑Инвестиций появятся в течение 15 минут.');
+      return applyRemote(currentAccount.id).then(function () { renderAll(); });
+    }).catch(function (err) {
+      if ($('#brokerError')) $('#brokerError').textContent = err.message;
+    }).then(function () {
+      if ($('#brokerSubmit')) $('#brokerSubmit').disabled = false;
+    });
+  });
+
   if (btnSync) {
     btnSync.title = 'Перечитать данные из Supabase';
     btnSync.addEventListener('click', function () {

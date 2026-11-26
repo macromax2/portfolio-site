@@ -24,8 +24,10 @@ function makeContext(rows) {
     hidden: true, innerHTML: '',
     querySelectorAll() { return []; }
   };
+  const calls = [];
   const client = {
     auth: { getSession: () => Promise.resolve({ data: { session: null } }) },
+    rpc(name, args) { calls.push([name, args]); return Promise.resolve({ data: null, error: null }); },
     from(table) {
       let filters = {};
       const q = {
@@ -45,6 +47,7 @@ function makeContext(rows) {
       return q;
     }
   };
+  const connect = { hidden: true, cloneNode() { return this; }, addEventListener() {}, parentNode: { replaceChild() {} } };
   const ctx = {
     console,
     localStorage: {
@@ -53,7 +56,7 @@ function makeContext(rows) {
     },
     document: {
       querySelector: () => null,
-      getElementById: id => id === 'brokerSwitch' ? host : null,
+      getElementById: id => id === 'brokerSwitch' ? host : id === 'btnConnectBroker' ? connect : null,
     },
     setTimeout, clearTimeout,
     state: { quotes: {}, settings: {}, goals: [] },
@@ -66,7 +69,8 @@ function makeContext(rows) {
   vm.createContext(ctx);
   vm.runInContext(sourceOf('normalizeReport'), ctx);
   vm.runInContext(adapter, ctx);
-  return { ctx, host, store };
+  ctx.__rpcCalls = calls;
+  return { ctx, host, store, connect };
 }
 
 function payload(name) {
@@ -93,13 +97,14 @@ const rows = {
   broker_accounts: [{ user_id: 'user-1', broker: 'tinvest', account_id: 'acc-1', enabled: true, status: 'ok' }],
 };
 
-const { ctx, host } = makeContext(rows);
+const { ctx, host, connect } = makeContext(rows);
 assert.equal(ctx.window.getAvailableBrokers().join(','), 'sber', 'до загрузки брокер по умолчанию');
 await ctx.loadServerState();
 assert.equal(ctx.window.getAvailableBrokers().join(','), 'sber,tinvest');
 assert.equal(host.hidden, false, 'переключатель виден при двух брокерах');
 assert.match(host.innerHTML, /Сбер/);
 assert.match(host.innerHTML, /Инвестиции/);
+assert.equal(connect.hidden, true, 'кнопка подключения скрыта, когда брокер уже подключён');
 assert.equal(ctx.state.report.positions[0].name, 'Сбер');
 assert.ok(ctx.state.quotes.SBER, 'котировки Сбера загружены');
 
@@ -117,5 +122,7 @@ const one = makeContext({
 await one.ctx.loadServerState();
 assert.equal(one.ctx.window.getAvailableBrokers().join(','), 'sber');
 assert.equal(one.host.hidden, true, 'переключатель скрыт, если брокер один');
+assert.equal(one.connect.hidden, false, 'кнопка подключения видна, если только Сбер');
+assert.equal(typeof one.ctx.supabaseRpc, 'undefined');
 
 console.log('OK: брокеры разделены, переключатель скрыт при одном брокере');
