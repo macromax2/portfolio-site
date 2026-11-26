@@ -118,6 +118,11 @@ assert.ok(adapter.includes('qty * avg'), 'Серверная себестоим�
 assert.ok(adapter.includes("order('period_to', { ascending: false })") &&
           !adapter.includes("order('imported_at', { ascending: false })"),
           'Дашборд берёт последний загруженный отчёт вместо последнего по дате');
+assert.ok(html.includes('Журнал сделок из брокерских отчётов'),
+          'В карточке бумаги нет журнала сделок');
+assert.ok(adapter.includes("sb.from('transactions')") &&
+          adapter.includes('state.serverTrades'),
+          'Адаптер не загружает журнал сделок с сервера');
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');
@@ -125,6 +130,6 @@ assert.ok(html.includes("money(d.nkd)") && !html.includes('в т.ч. НКД'),
           'НКД снова добавляется к стоимости в таблице');
 assert.ok(html.includes('total += m.clean') && html.includes('accruedTotal'),
           'Общая стоимость включает НКД');
-checks += 7;
+checks += 9;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);

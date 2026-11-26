@@ -119,6 +119,11 @@ input:focus,select:focus{outline:2px solid #c7d7fd;border-color:var(--blue)}
 .seccard .links{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .seccard .spark{margin-top:12px}
 .seccard .spark svg{width:100%;height:74px;display:block}
+.seccard .deals{margin-top:14px;font-size:12.5px}
+.seccard .deals th,.seccard .deals td{padding:5px 6px;text-align:right;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.seccard .deals th:first-child,.seccard .deals td:first-child{text-align:left}
+.seccard .deals caption{text-align:left;color:var(--muted);padding-bottom:5px}
 .posrow{cursor:pointer}
 .posrow:hover td{background:var(--reco-bg)}
 .goalhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px}
@@ -2811,7 +2816,8 @@ function bind(){
             coupon_period: b0.COUPONPERIOD, nominal: b0.FACEVALUE
           },
           position: pos,
-          history: state.history[secid] || []
+          history: state.history[secid] || [],
+          deals: (state.serverTrades||[]).filter(t=>t.isin===isin)
         });
       }catch(e){
         $("#scBody").innerHTML = '<div class="warn">Не удалось получить данные MOEX: '+esc(e.message)+'</div>';
@@ -2865,6 +2871,18 @@ function bind(){
     }
     if(q.live===false) html += '<div class="small muted" style="margin-top:10px">Котировка с бэкенда (не live), обновлена: '+esc(q.updated_at||"—")+'</div>';
     if(d.history && d.history.length>1) html += '<div class="spark">'+sparkline(d.history)+'</div>';
+    if(d.deals && d.deals.length){
+      html += '<table class="deals"><caption>Журнал сделок из брокерских отчётов</caption>'+
+        '<thead><tr><th>Дата</th><th>Операция</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead><tbody>'+
+        d.deals.map(t=>{
+          const buy = t.operation_type==="buy";
+          return '<tr><td>'+esc(t.date||"—")+'</td>'+
+            '<td class="'+(buy?"up":"down")+'">'+(buy?"Покупка":"Продажа")+'</td>'+
+            '<td>'+NF0.format(t.count||0)+'</td>'+
+            '<td>'+(t.price!=null?NF.format(t.price):"—")+'</td>'+
+            '<td>'+money(t.amount||0)+'</td></tr>';
+        }).join("")+'</tbody></table>';
+    }
     html += '<div class="small muted" style="margin-top:10px">Источник: MOEX ISS, биржа '+esc(q.board||"—")+
             (q.updated_at?' · обновлено '+esc(q.updated_at):'')+'</div>';
     $("#scBody").innerHTML = html;

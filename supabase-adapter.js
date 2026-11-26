@@ -57,10 +57,18 @@
       sb.from('reports').select('payload').eq('user_id', uid)
         .order('period_to', { ascending: false })
         .order('report_created', { ascending: false })
-        .limit(1).maybeSingle()
+        .limit(1).maybeSingle(),
+      sb.from('transactions').select('isin,ticker,operation_type,date,count,price,amount')
+        .eq('user_id', uid).order('date', { ascending: true }).limit(500)
     ]).then(function (res) {
       var settings = res[0].data, goals = res[1].data,
-          quotes = res[2].data, positions = res[3].data, report = res[4].data;
+          quotes = res[2].data, positions = res[3].data, report = res[4].data,
+          trades = res[5].data;
+      // Журнал сделок нужен карточке бумаги: покупка/продажа фиксируется
+      // как отдельное событие, даже если позиция закрылась и открылась заново.
+      state.serverTrades = (trades || []).filter(function (t) {
+        return t.operation_type === 'buy' || t.operation_type === 'sell';
+      });
 
       state.serverCostBasis = null;
       var basis = {};
