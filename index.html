@@ -1377,7 +1377,7 @@ function corrBeta(returns, benchMap){
 function currentValue(){
   let v = cashEnd();
   const cb = costBasis();
-  reportPositions().forEach(p=>{ v += positionMetrics(p, cb, todayISO()).clean; });
+  reportPositions().forEach(p=>{ v += positionMetrics(p, cb, todayISO()).value; });
   return v;
 }
 function accruedTotal(){
@@ -1399,7 +1399,7 @@ function renderKpis(){
   const period = state.report.period;
   $("#kpis").innerHTML = [
     kpi("Стоимость портфеля", money(cur),
-        "без НКД · НКД " + money(accruedTotal()) + " отдельно"),
+        "включая НКД " + money(accruedTotal()) + " · в таблице отдельно"),
     kpi("Результат за период", (res>=0?"+":"")+money(res),
         "вложено нетто " + money(nf.net), cls(res)),
     kpi("Доходность за период", twr!=null?pct(twr):"—",
