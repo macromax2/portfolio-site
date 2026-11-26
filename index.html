@@ -1423,13 +1423,17 @@ function renderPositions(){
     const r = refOf(d.p.isin);
     const name = d.p.name;
     const share = total>0 ? d.val/total*100 : 0;
+    // Себестоимость хранится в ₽ за штуку; у облигаций таблица показывает
+    // привычную цену в % от номинала (1000 ₽), как в отчёте брокера.
+    const isBond = !!(r && /облигац/i.test(r.type||""));
+    const avgShown = d.avg!=null ? (isBond ? d.avg/10 : d.avg) : null;
     const m = state.manualQuotes[d.k] || {};
     const hasManual = !!m.last;
     return '<tr class="posrow" data-sec="'+esc(d.p.isin||d.k)+'">'+
       '<td><div class="name">'+esc(name)+'</div><div class="tik">'+esc(r?r.code:d.p.isin)+
         (r?' · '+esc(r.type||""):'')+'</div></td>'+
       '<td class="n">'+NF0.format(d.p.qty)+'</td>'+
-      '<td class="n">'+(d.avg!=null?NF.format(d.avg):"—")+'</td>'+
+      '<td class="n">'+(avgShown!=null?NF.format(avgShown):"—")+'</td>'+
       '<td class="n"><b>'+money(d.val)+'</b>'+
         (d.nkd>0.005?'<div class="tik">в т.ч. НКД '+money(d.nkd)+'</div>':'')+'</td>'+
       '<td class="n">'+share.toFixed(1)+'%</td>'+
