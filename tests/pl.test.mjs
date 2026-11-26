@@ -134,8 +134,10 @@ assert.ok(html.includes('state.inceptionQty') &&
 assert.ok(html.includes('cashTradeDates') && html.includes('cashFeeDates'),
           'Недостающие денежные проводки по сделкам не добавляются');
 checks += 5;
-assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
-          'Цена покупки облигации не показывается в % от номинала');
+assert.ok(html.includes('NF4.format(d.avg)') && !html.includes('d.avg/10'),
+          'Цена покупки облигации не показывается в ₽ за штуку');
+assert.ok(html.includes('Цена покупки, ₽'),
+          'В заголовке колонки не указаны рубли');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');
 assert.ok(html.includes("money(d.nkd)") && !html.includes('в т.ч. НКД'),
           'НКД снова добавляется к стоимости в таблице');
