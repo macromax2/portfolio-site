@@ -110,4 +110,21 @@ const bought = tradeCtx.costBasis().BOND;
 assert.ok(Math.abs(bought.cost - 998.59) < 1e-6, 'НКД 3,1 ₽ попал в себестоимость покупки');
 checks++;
 
+// Ручная цена покупки (её нет в отчёте) должна заменять цену начала периода.
+const manualCtx = {
+  state: { report:{ positions:[{
+    isin:'SBER', qty_start:2, price_start:285.3
+  }], trades:[] }, manualCost:{ SBER:280 } },
+  reportPositions: () => [{ isin:'SBER', qty_start:2, price_start:285.3 }],
+  priceRub: (s, p) => p,
+  d2i: d => d,
+  refOf: () => null,
+  secidOf: r => r ? r.code : null,
+};
+vm.createContext(manualCtx);
+vm.runInContext(sourceOf('costBasis'), manualCtx);
+assert.ok(Math.abs(manualCtx.costBasis().SBER.cost - 560) < 1e-6,
+          'Ручная цена покупки не применилась');
+checks++;
+
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);

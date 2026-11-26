@@ -184,7 +184,7 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
     <div class="tscroll">
     <table>
       <thead><tr>
-        <th>Бумага</th><th class="n">Кол-во</th><th class="n">Цена покупки</th>
+        <th>Бумага</th><th class="n">Кол-во</th><th class="n" title="По умолчанию — цена на начало периода из отчёта. Настоящую цену покупки можно задать кнопкой «изм».">Цена входа</th>
         <th class="n">Стоимость по рынку</th><th class="n">Доля</th>
         <th class="n">Себестоимость</th><th class="n">P/L</th><th class="n">P/L %</th><th>Котировка</th>
       </tr></thead>
@@ -337,6 +337,8 @@ footer{max-width:1100px;margin:30px auto 20px;padding:0 20px;color:var(--muted);
         <input id="mqCoupon" type="number" min="0" step="any" inputmode="decimal" placeholder="например, 61.08"/></div>
       <div><label for="mqNext">Следующий купон (необязательно)</label>
         <input id="mqNext" type="date"/></div>
+      <div><label for="mqCost">Настоящая цена покупки, ₽ за 1 шт (необязательно)</label>
+        <input id="mqCost" type="number" min="0" step="any" inputmode="decimal" placeholder="например, 280"/></div>
     </div>
     <div class="acts">
       <button class="btn ghost small" id="mqReset">Сбросить</button>
@@ -655,6 +657,8 @@ let state = {
   quoteCache: {},    // secid -> {value, ts}
   // Ручно введенные котировки (приоритетнее кэша/авто)
   manualQuotes: {},  // secid -> {last, prevprice, couponvalue, nextcoupon, ...}
+  // В отчёте нет настоящей цены покупки — только цена на начало периода.
+  manualCost: {},    // secid -> цена покупки за 1 шт, ₽
   history: {},       // secid -> {"YYYY-MM-DD": close}
   imoex: {},         // "YYYY-MM-DD": close
   timeline: [],      // [{date, value, flow}]
@@ -672,7 +676,8 @@ let state = {
 function save(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify({
     report: state.report, goals: state.goals, payments: state.payments, settings: state.settings,
-    manualQuotes: state.manualQuotes, couponGoalSecid: state.couponGoalSecid,
+    manualQuotes: state.manualQuotes, manualCost: state.manualCost,
+    couponGoalSecid: state.couponGoalSecid,
     quoteCache: state.quoteCache, rfRate: state.rfRate,
     rebalanceTargets: state.rebalanceTargets
   })); }catch(e){}
@@ -681,7 +686,8 @@ function save(){
 /* цели и настройки дублируются на сервер — не теряются при смене браузера/отчёта */
 function serverStatePayload(){
   return {goals: state.goals, payments: state.payments, settings: state.settings,
-          manualQuotes: state.manualQuotes, couponGoalSecid: state.couponGoalSecid,
+          manualQuotes: state.manualQuotes, manualCost: state.manualCost,
+          couponGoalSecid: state.couponGoalSecid,
           rfRate: state.rfRate, rebalanceTargets: state.rebalanceTargets};
 }
 let serverSaveTimer = null;
@@ -714,6 +720,7 @@ async function loadServerState(){
     if(d.payments) state.payments = d.payments;
     if(d.settings) state.settings = Object.assign({}, state.settings, d.settings);
     if(d.manualQuotes) state.manualQuotes = d.manualQuotes;
+    if(d.manualCost) state.manualCost = d.manualCost;
     if(typeof d.couponGoalSecid === "string") state.couponGoalSecid = d.couponGoalSecid;
     if(typeof d.rfRate === "number") state.rfRate = d.rfRate;
     if(d.rebalanceTargets) state.rebalanceTargets = d.rebalanceTargets;
@@ -731,6 +738,7 @@ function load(){
       state.payments = j.payments||[];
       state.settings = Object.assign({yield:12, monthly:0, plan:0, theme:"auto"}, j.settings||{});
       state.manualQuotes = j.manualQuotes||{};
+      state.manualCost = j.manualCost||{};
       state.couponGoalSecid = j.couponGoalSecid||"";
       state.quoteCache = j.quoteCache||{};
       state.rfRate = Number(j.rfRate)||0;
@@ -1039,8 +1047,12 @@ function costBasis(){
   // ключ — SECID (как у сделок): позиции отчёта даны по ISIN, сделки — по коду
   reportPositions().forEach(p=>{
     const r = refOf(p.isin); const k = r ? secidOf(r) : p.isin;
+    // В отчёте нет настоящей цены покупки — только цена на начало периода.
+    // Если пользователь указал реальную цену, берём её (уже в ₽ за штуку).
+    const mc = state.manualCost && state.manualCost[k];
+    const unit = (mc != null && mc > 0) ? mc : priceRub(k, p.price_start||0);
     map[k] = { qty:p.qty_start||0,
-               cost:(p.qty_start||0)*priceRub(k, p.price_start||0), // облигации: % → ₽
+               cost:(p.qty_start||0)*unit, // облигации из отчёта: % → ₽
                realized:0, name:p.name };
   });
   const sorted = [...(state.report.trades||[])].sort((a,b)=>
@@ -1429,7 +1441,8 @@ function renderPositions(){
       '<td><div class="name">'+esc(name)+'</div><div class="tik">'+esc(r?r.code:d.p.isin)+
         (r?' · '+esc(r.type||""):'')+'</div></td>'+
       '<td class="n">'+NF0.format(d.p.qty)+'</td>'+
-      '<td class="n">'+(d.avg!=null?NF.format(d.avg):"—")+'</td>'+
+      '<td class="n">'+(d.avg!=null?NF.format(d.avg):"—")+
+        ((state.manualCost&&state.manualCost[d.k])>0?'<div class="tik">указана вручную</div>':'')+'</td>'+
       '<td class="n"><b>'+money(d.val)+'</b>'+
         (d.nkd>0.005?'<div class="tik">в т.ч. НКД '+money(d.nkd)+'</div>':'')+'</td>'+
       '<td class="n">'+share.toFixed(1)+'%</td>'+
@@ -1437,7 +1450,7 @@ function renderPositions(){
       '<td class="n '+cls(d.pl)+'">'+(d.pl>=0?"+":"")+NF.format(d.pl)+'</td>'+
       '<td class="n '+cls(d.pl)+'">'+(d.plp!=null?pct(d.plp):"—")+'</td>'+
       '<td class="n"><small>'+(hasManual?'ручн':'авто')+'</small>'+
-        ' <button class="btn tiny" data-manual-upd="'+d.k+'">обн</button></td>'+
+        ' <button class="btn tiny" data-manual-upd="'+d.k+'" title="Котировка и цена покупки">изм</button></td>'+
     "</tr>";
   }).join("");
   html += "<tr>"+
@@ -2519,6 +2532,8 @@ function openQuoteModal(secid){
   $("#mqLast").value = mq.last!=null ? mq.last : "";
   $("#mqCoupon").value = mq.couponvalue!=null ? mq.couponvalue : "";
   $("#mqNext").value = mq.nextcoupon || "";
+  const mc = state.manualCost && state.manualCost[secid];
+  $("#mqCost").value = mc != null ? mc : "";
   $("#mqReset").style.display = mq.last!=null ? "" : "none";
   modal.hidden = false;
   $("#mqLast").focus();
@@ -2583,7 +2598,8 @@ function bind(){
                     positions:[],assets:[],reference:[]};
     state.goals = []; state.payments = [];
     state.settings = Object.assign({}, SETTINGS_EMBEDDED);
-    state.manualQuotes = {}; state.couponGoalSecid = ""; state.quoteCache = {};
+    state.manualQuotes = {}; state.manualCost = {};
+    state.couponGoalSecid = ""; state.quoteCache = {};
     state.history = {}; state.imoex = {}; state.twr = null; state.imoexTwr = null;
     state.kindTwr = {}; state.idxFilter = null; state.refreshIssues = [];
     state.rfRate = 0; state.rebalanceTargets = {ofz:67,corp:33,fund:0,stock:0,cash:0};
@@ -2954,15 +2970,21 @@ function bind(){
     const next = $("#mqNext").value || null;
     if(last==null || !isFinite(last) || last<=0){ setStatus("Укажите корректную цену (> 0)", true); return; }
     if(coupon!=null && (!isFinite(coupon) || coupon<0)){ setStatus("Неверный купон", true); return; }
+    const cost = parseNum($("#mqCost").value);
+    if(cost!=null && (!isFinite(cost) || cost<=0)){ setStatus("Неверная цена покупки (> 0)", true); return; }
     state.manualQuotes = {...state.manualQuotes, [secid]: {last, couponvalue:coupon, nextcoupon:next}};
+    const mc = {...state.manualCost};
+    if(cost!=null) mc[secid] = cost; else delete mc[secid];
+    state.manualCost = mc;
     restoreQuoteBase(secid);
     save(); closeQuoteModal(); renderAll();
-    setStatus("Котировка "+secid+" сохранена вручную");
+    setStatus("Значения "+secid+" сохранены вручную");
   });
   $("#mqReset").addEventListener("click", ()=>{
     const secid = $("#quoteModal").dataset.secid; if(!secid) return;
     const mq = {...state.manualQuotes}; delete mq[secid];
     state.manualQuotes = mq;
+    const mc = {...state.manualCost}; delete mc[secid]; state.manualCost = mc;
     restoreQuoteBase(secid);
     save(); closeQuoteModal(); renderAll();
     setStatus("Ручная котировка "+secid+" сброшена");
