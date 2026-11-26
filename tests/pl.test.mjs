@@ -131,7 +131,9 @@ assert.ok(adapter.includes(".order('period_from', { ascending: true })") &&
 assert.ok(html.includes('state.inceptionQty') &&
           html.includes('limit=5000'),
           'TWR/IMOEX считаются не с начала истории');
-checks += 4;
+assert.ok(html.includes('cashTradeDates') && html.includes('cashFeeDates'),
+          'Недостающие денежные проводки по сделкам не добавляются');
+checks += 5;
 assert.ok(html.includes('isBond ? d.avg/10 : d.avg'),
           'Цена покупки облигации не показывается в % от номинала');
 assert.ok(html.includes('НКД</th>'), 'В таблице нет отдельной колонки НКД');

@@ -1220,6 +1220,26 @@ function buildTimeline(kind){
     if(x.desc==="Зачисление д/с" || x.desc==="Списание д/с")
       extFlow[d] = (extFlow[d]||0) + net;
   });
+  // Отчёты пересекаются по датам, и по сделкам на стыке периодов денежная
+  // проводка может отсутствовать (например, сделки 22.11 с расчётом 24.11
+  // есть в журнале, а «Сделка от 22.11» — нет). Без неё бумаги появляются
+  // бесплатно и TWR искусственно взлетает. Добавляем недостающие деньги.
+  const cashTradeDates = {}, cashFeeDates = {};
+  (state.report.cashflow||[]).forEach(x=>{
+    const m = String(x.desc||"").match(/от\s+(\d{2}\.\d{2}\.\d{4})/i);
+    if(!m) return;
+    if(/^Сделка/i.test(x.desc)) cashTradeDates[m[1]] = true;
+    if(/^Комиссия/i.test(x.desc)) cashFeeDates[m[1]] = true;
+  });
+  (state.report.trades||[]).forEach(t=>{
+    const settle = d2i(t.settle) || d2i(t.date);
+    if(!settle) return;
+    let delta = 0;
+    const s = t.side==="Продажа" ? 1 : -1;
+    if(!cashTradeDates[t.date]) delta += s*((t.amount||0)+(t["nkд"]||0));
+    if(!cashFeeDates[t.date]) delta -= (t.fee_broker||0)+(t.fee_exchange||0);
+    if(delta) cashDelta[settle] = (cashDelta[settle]||0) + delta;
+  });
   if(kind){
     // денежный эффект сделок группы: покупка списывает цену+НКД+комиссию,
     // продажа зачисляет цену+НКД за вычетом комиссии
