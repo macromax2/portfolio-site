@@ -168,5 +168,18 @@ assert.ok(html.includes('/engines/stock/markets/bonds/securities/') &&
           html.includes('cacheQuote(sid, quotes[sid])'),
           'Догрузка купонов не обновляет кэш котировок');
 checks += 2;
+assert.ok(html.includes('function realizedRows') && html.includes('renderRealized()') &&
+          html.includes('id="realizedBox"'),
+          'Реализованный P/L не выведен отдельным блоком');
+assert.ok(html.includes('.filter(r=>Math.abs(r.realized)>0.004)') &&
+          html.includes('v.realized||0'),
+          'Реализованный P/L берётся не из журнала сделок');
+assert.ok(html.includes('Сводка за месяц') && html.includes('Получено <b>') &&
+          html.includes('Ожидается <b>') && html.includes('Итого '),
+          'Нет сводки «получено / ожидается / итого» за месяц');
+assert.ok(html.includes('const expectedMonth = now.reduce') &&
+          html.includes('slice(0,7)===month'),
+          'Ожидаемые выплаты в сводке не ограничены текущим месяцем');
+checks += 4;
 
 console.log(`OK: ${positions.length} эмитентов, ${checks} проверок. P/L считается по чистой цене.`);
