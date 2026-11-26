@@ -2645,8 +2645,7 @@ function bind(){
 
   (async function detectApi(){
     const cands = [];
-    if(location.protocol==="http:" || location.protocol==="https:") cands.push("/api/health");
-    cands.push("http://127.0.0.1:8001/api/health", "http://localhost:8001/api/health");
+    /* Локальный FastAPI не используется: данные берутся из Supabase. */
     for(const url of cands){
       try{
         const ping = fetch(url).then(r=>r.ok?r.json():Promise.reject()).then(()=>true, ()=>false);
