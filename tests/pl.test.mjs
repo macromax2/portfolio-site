@@ -134,7 +134,8 @@ assert.ok(html.includes('state.inceptionQty') &&
 assert.ok(html.includes('cashTradeDates') && html.includes('cashFeeDates'),
           'Недостающие денежные проводки по сделкам не добавляются');
 checks += 5;
-assert.ok(html.includes('NF4.format(d.avg)') && !html.includes('d.avg/10'),
+assert.ok(html.includes('NF4.format(d.avg)') && !html.includes('d.avg/10') &&
+          !html.includes('NF.format(avgShown)'),
           'Цена покупки облигации не показывается в ₽ за штуку');
 assert.ok(html.includes('Цена покупки, ₽'),
           'В заголовке колонки не указаны рубли');
