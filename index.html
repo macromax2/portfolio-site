@@ -1051,15 +1051,17 @@ function costBasis(){
     const m = map[key] || (map[key] = {qty:0, cost:0, realized:0, name:t.name});
     const q = t.qty||0;
     const fee = (t.fee_broker||0)+(t.fee_exchange||0);
+    // НКД не включаем в себестоимость: это не цена бумаги, а начисленный
+    // купон, который вернётся деньгими. Иначе P/L по облигациям завышается.
     if(t.side==="Покупка"){
       m.qty += q;
-      m.cost += (t.amount||0) + (t["nkд"]||0) + fee;
+      m.cost += (t.amount||0) + fee;
     }else{
       const avg = m.qty>0 ? m.cost/m.qty : 0;
       const sold = Math.min(q, m.qty);
       m.cost -= avg*sold;
       m.qty -= sold;
-      m.realized += (t.amount||0) + (t["nkд"]||0) - avg*sold - fee;
+      m.realized += (t.amount||0) - avg*sold - fee;
       if(q>sold) m.realized += (t.amount||0)*(q-sold)/q; // аномалия — страхуемся
     }
   });
@@ -1395,17 +1397,21 @@ function renderPositions(){
   const data = rows.map(p=>{
     const r = refOf(p.isin);
     const k = r?secidOf(r):p.isin;
-    // рыночная цена: для облигаций грязная (чистая + НКД) — как при продаже
-    const mkt = quoteOf(k);
-    const mktFull = mkt!=null ? mkt + accruedOf(k, todayISO()) : null;
-    // без live-котировок — стоимость из отчёта (без НКД) + НКД из отчёта
-    const val = mktFull!=null ? p.qty*mktFull : (p.value||0)+(p["nkд"]||0);
+    // Рыночная цена: чистая (как в отчёте) и грязная (чистая + НКД, что даст продажа).
+    const mkt = quoteOf(k);                       // уже в ₽ (для облигаций % → ₽)
+    const accr = mkt!=null ? accruedOf(k, todayISO()) : 0;
+    const nkd = mkt!=null ? p.qty*accr : (p["nkд"]||0);
+    const valClean = mkt!=null ? p.qty*mkt : (p.value||0);
+    const val = valClean + nkd;                   // показываемая стоимость — «грязная», как в отчёте
     total += val;
     const c = cb[k] || cb[p.isin] || {cost:0};
-    const avg = p.qty>0 ? c.cost/p.qty : null;   // себестоимость за штуку
-    const pl = val - c.cost;
+    const avg = p.qty>0 ? c.cost/p.qty : null;    // себестоимость за штуку, чистая цена
+    // P/L считаем по чистой цене: НКД — не прибыль, а начисленный купон,
+    // который обнуляется в дату выплаты. Сравнение грязной цены с чистой
+    // себестоимостью давало фиктивные +7% по ОФЗ 26248.
+    const pl = valClean - c.cost;
     const plp = c.cost>0 ? pl/c.cost*100 : null;
-    return {p, k, avg, val, cost:c.cost, pl, plp};
+    return {p, k, avg, val, nkd, cost:c.cost, pl, plp};
   });
   const cash = cashEnd();
   total += cash;
@@ -1420,7 +1426,8 @@ function renderPositions(){
         (r?' · '+esc(r.type||""):'')+'</div></td>'+
       '<td class="n">'+NF0.format(d.p.qty)+'</td>'+
       '<td class="n">'+(d.avg!=null?NF.format(d.avg):"—")+'</td>'+
-      '<td class="n"><b>'+money(d.val)+'</b></td>'+
+      '<td class="n"><b>'+money(d.val)+'</b>'+
+        (d.nkd>0.005?'<div class="tik">в т.ч. НКД '+money(d.nkd)+'</div>':'')+'</td>'+
       '<td class="n">'+share.toFixed(1)+'%</td>'+
       '<td class="n">'+money(d.cost)+'</td>'+
       '<td class="n '+cls(d.pl)+'">'+(d.pl>=0?"+":"")+NF.format(d.pl)+'</td>'+
@@ -2771,16 +2778,16 @@ function bind(){
         const row = reportPositions().find(x=>posKey(x)===secid);
         const live = quoteOf(secid);
         const qty = row ? (row.qty||0) : 0;
-        const value = live!=null && qty
-          ? qty*(live+accruedOf(secid,todayISO()))
-          : (row ? (row.value||0)+(row["nkд"]||0) : 0);
+        const clean = live!=null && qty ? qty*live : (row ? (row.value||0) : 0);
+        const nkd = live!=null && qty ? qty*accruedOf(secid,todayISO()) : (row ? (row["nkд"]||0) : 0);
+        const value = clean + nkd;
         const cb = costBasis()[secid] || {};
-        const cost = cb.cost || value;
+        const cost = cb.cost || clean;
         // В карточке средняя цена облигации показывается в % от номинала.
         const avg = cb.qty ? cb.cost/cb.qty : null;
         const pos = qty>0 ? {
           count: qty, avg_price: isBond && avg!=null ? avg/10 : avg,
-          value: value, pl: value-cost, pl_pct: cost ? (value-cost)/cost*100 : null
+          value: value, pl: clean-cost, pl_pct: cost ? (clean-cost)/cost*100 : null
         } : null;
         renderSecCard({
           isin: isin, secid: sec.SECID || secid,
