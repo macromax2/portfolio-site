@@ -184,7 +184,11 @@
           brokerAccounts = res[6].data || [];
       var found = {};
       allReportRows.forEach(function (r) { found[brokerOf(r)] = true; });
-      brokerAccounts.forEach(function (r) { if (brokerOf(r) === 'tinvest') found.tinvest = true; });
+      brokerAccounts.forEach(function (r) {
+        // Показываем брокера только после первой успешной синхронизации,
+        // иначе вкладка была бы пустой до первого отчёта.
+        if (brokerOf(r) === 'tinvest' && r.status === 'ok') found.tinvest = true;
+      });
       availableBrokers = Object.keys(found).sort(function (a, b) {
         return (a === 'sber' ? -1 : b === 'sber' ? 1 : a.localeCompare(b));
       });
