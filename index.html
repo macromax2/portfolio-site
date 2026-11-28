@@ -3226,6 +3226,16 @@ function bind(){
   renderAll();
   setStatus(restored ? "Данные восстановлены из браузера" : "Загрузка…");
   await refreshMarket();
+
+  /* Пока вкладка открыта — раз в 15 минут подтягиваем свежий отчёт из
+     Supabase и пересчитываем стоимость по текущим котировкам. Сервер при этом
+     работает сам: Apps Script ходит в почту каждые 15 минут, а GitHub Actions
+     раз в 15 минут разбирает отчёты — браузер для этого не нужен. */
+  setInterval(async ()=>{
+    if(document.visibilityState !== "visible") return;
+    try{ await loadServerState(); }catch(e){ console.warn(e); }
+    try{ await refreshMarket(); }catch(e){ console.warn(e); }
+  }, 15*60*1000);
 })();
 </script>
 <script src="./supabase-umd.js?v=3"></script>
