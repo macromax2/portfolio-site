@@ -46,6 +46,7 @@ const cb = Object.fromEntries(
 
 function makeMetrics(accruedFn){
   const ctx = {
+    state: { quotes: Object.fromEntries(Object.keys(prices).map(k => [k, { NEXTCOUPON: '2027-01-01', COUPONVALUE: 1 }])) },
     posKey: p => p.isin,
     quoteOf: k => prices[k] ?? null,
     accruedOf: accruedFn,

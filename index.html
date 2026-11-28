@@ -1212,7 +1212,13 @@ function positionMetrics(p, cb, isoDate){
   const price = quoteOf(k);                       // чистая цена в ₽
   const hasPrice = price != null;
   const clean = hasPrice ? (p.qty||0)*price : (p.value||0);
-  const nkd = hasPrice ? (p.qty||0)*accruedOf(k, isoDate) : (p["nkд"]||0);
+  // НКД: считаем по купонному графику, если он есть (MOEX). У Т‑Инвестиций
+  // графика нет — берём НКД из отчёта/API, но он по-прежнему не входит в P/L.
+  const q = state.quotes[k];
+  const hasCouponSchedule = !!(q && q.NEXTCOUPON && q.COUPONVALUE);
+  const nkd = hasPrice
+    ? (hasCouponSchedule ? (p.qty||0)*accruedOf(k, isoDate) : (p["nkд"]||0))
+    : (p["nkд"]||0);
   const c = cb[k] || cb[p.isin] || {cost:0, qty:0};
   const cost = c.cost || 0;
   const pl = clean - cost;                        // НИКОГДА не добавляем НКД сюда
